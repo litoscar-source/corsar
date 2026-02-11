@@ -10,6 +10,12 @@
       body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
       canvas { touch-action: none; } /* Prevent scrolling while drawing */
     </style>
+    <script>
+      // Fix for "process is not defined" error on static hosting (Hostinger/Netlify/Vercel)
+      if (typeof process === "undefined") {
+        window.process = { env: { API_KEY: "" } };
+      }
+    </script>
   <script type="importmap">
 {
   "imports": {
@@ -27,5 +33,6 @@
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
