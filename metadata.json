@@ -1,6 +1,6 @@
 {
   "name": "AuditPro 360",
-  "description": "Sistema de gestão de relatórios de visita e auditoria técnica optimizado para tablets com assinatura digital e insights de IA.",
+  "description": "Sistema de gestão de relatórios de visita e auditoria técnica optimizado para tablets com assinatura digital.",
   "requestFramePermissions": [
     "camera",
     "geolocation"

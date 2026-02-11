@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Report, Client, User, AuditCriteria, ReportTemplate, CompanySettings } from '../types';
 import SignaturePad from './SignaturePad';
-import { generateReportSummary } from '../services/geminiService';
 import { generatePDF } from '../services/pdfService';
-import { Save, Bot, CheckCircle, AlertCircle, MinusCircle, Loader2, FileText, Download, Mail, MapPin } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, MinusCircle, FileText, Download, Mail, MapPin } from 'lucide-react';
 
 interface ReportFormProps {
   client: Client;
@@ -42,7 +41,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   const [clientName, setClientName] = useState(client.contactPerson);
   const [clientSignature, setClientSignature] = useState<string | null>(null);
   
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [gpsCoords, setGpsCoords] = useState<{lat: number, lng: number} | undefined>(undefined);
 
   const handleCriteriaStatusChange = (id: string, status: AuditCriteria['status']) => {
@@ -51,13 +49,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
 
   const handleCriteriaNotesChange = (id: string, notes: string) => {
     setCriteria(prev => prev.map(c => c.id === id ? { ...c, notes } : c));
-  };
-
-  const handleGenerateSummary = async () => {
-    setIsGeneratingAI(true);
-    const result = await generateReportSummary(client.name, template.label, criteria);
-    setSummary(result);
-    setIsGeneratingAI(false);
   };
 
   const handleFinish = async (action: 'save' | 'pdf' | 'email') => {
@@ -306,32 +297,13 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
           <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-indigo-900 flex items-center gap-2">
-                {isGeneralIntervention ? (
-                  <>
-                    <FileText size={24} /> Relatório da Intervenção
-                  </>
-                ) : (
-                  <>
-                    <Bot size={24} /> Resumo e Conclusões
-                  </>
-                )}
+                <FileText size={24} /> {isGeneralIntervention ? 'Relatório da Intervenção' : 'Resumo e Conclusões'}
               </h3>
-              {hasCriteria && (
-                <button
-                  type="button"
-                  onClick={handleGenerateSummary}
-                  disabled={isGeneratingAI}
-                  className="text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2 transition-all"
-                >
-                  {isGeneratingAI ? <Loader2 className="animate-spin" size={16}/> : <Bot size={16}/>}
-                  {summary ? 'Regerar com IA' : 'Gerar Resumo IA'}
-                </button>
-              )}
             </div>
             <textarea
               value={summary}
               onChange={e => setSummary(e.target.value)}
-              placeholder={isGeneralIntervention ? "Descreva detalhadamente a intervenção realizada..." : "Escreva um resumo ou utilize a IA para gerar com base nos critérios acima..."}
+              placeholder={isGeneralIntervention ? "Descreva detalhadamente a intervenção realizada..." : "Escreva um resumo e conclusões da auditoria..."}
               className={`w-full p-4 bg-white text-black border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 ${isGeneralIntervention ? 'h-64' : 'h-40'}`}
             />
           </div>
