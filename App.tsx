@@ -16,7 +16,13 @@ import {
   Square,
   LogOut,
   Building,
-  UserPlus
+  UserPlus,
+  History,
+  Mail,
+  Download,
+  Phone,
+  MapPin,
+  AtSign
 } from 'lucide-react';
 import { MOCK_USERS, MOCK_CLIENTS, MOCK_REPORTS, REPORT_TEMPLATES, DEFAULT_COMPANY_SETTINGS } from './constants';
 import { User, Client, Report, UserRole, ReportTypeKey, CompanySettings } from './types';
@@ -46,6 +52,9 @@ const App: React.FC = () => {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch] = useState('');
+  
+  // Client History State
+  const [viewingHistoryClient, setViewingHistoryClient] = useState<Client | null>(null);
 
   // User Management State (Settings)
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -133,6 +142,10 @@ const App: React.FC = () => {
     setIsClientModalOpen(true);
   };
 
+  const openClientHistory = (client: Client) => {
+    setViewingHistoryClient(client);
+  };
+
   // --- Actions: Users ---
 
   const handleSaveUser = (e: React.FormEvent<HTMLFormElement>) => {
@@ -185,7 +198,24 @@ const App: React.FC = () => {
     const client = clients.find(c => c.id === report.clientId);
     if (!client) return;
     const doc = generatePDF(report, client, companySettings);
-    doc.save(`Relatorio_${report.id}.pdf`);
+    doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}_${report.date}.pdf`);
+  };
+
+  const handleEmailReport = (report: Report) => {
+    const client = clients.find(c => c.id === report.clientId);
+    if (!client) return;
+
+    const doc = generatePDF(report, client, companySettings);
+    
+    // Simulate Email
+    const subject = encodeURIComponent(`Relatório de Intervenção - ${client.name} - ${report.date}`);
+    const body = encodeURIComponent(`Estimado(a) ${client.contactPerson},\n\nSegue em anexo o relatório da intervenção realizada dia ${report.date}.\n\nCumprimentos,\n${companySettings.name}`);
+    
+    // Open mailto
+    window.open(`mailto:${client.email}?subject=${subject}&body=${body}`);
+    // Download PDF for attachment
+    doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}_${report.date}.pdf`);
+    alert("O cliente de email foi aberto. O PDF foi descarregado para que o possa anexar manualmente.");
   };
 
   const handleDeleteReport = (id: string) => {
@@ -381,6 +411,11 @@ const App: React.FC = () => {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={() => openClientHistory(client)}
+                                className="p-2 text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100" title="Ver Histórico / Detalhes">
+                                <History size={18} />
+                              </button>
                               <button 
                                 onClick={() => initReportCreation(client)}
                                 className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100" title="Novo Relatório">
@@ -667,6 +702,120 @@ const App: React.FC = () => {
                   setSelectedClientForReport(null);
                 }} className="text-gray-500 hover:text-gray-800 text-sm font-medium">Cancelar</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Client History / Detail View Overlay */}
+        {viewingHistoryClient && (
+          <div className="fixed inset-0 bg-white z-50 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="bg-white border-b shadow-sm px-6 py-4 flex justify-between items-center">
+               <div className="flex items-center gap-4">
+                 <button onClick={() => setViewingHistoryClient(null)} className="text-gray-500 hover:bg-gray-100 p-2 rounded-full">
+                   <ChevronRight className="rotate-180" size={24} />
+                 </button>
+                 <div>
+                   <h2 className="text-xl font-bold text-gray-800">{viewingHistoryClient.name}</h2>
+                   <p className="text-sm text-gray-500">Ficha de Cliente e Histórico</p>
+                 </div>
+               </div>
+               <div className="flex gap-2">
+                 <button onClick={() => { setViewingHistoryClient(null); openEditClient(viewingHistoryClient); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center gap-2">
+                    <Edit2 size={18} /> Editar Dados
+                 </button>
+                 <button onClick={() => { setViewingHistoryClient(null); initReportCreation(viewingHistoryClient); }} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                    <Plus size={18} /> Novo Relatório
+                 </button>
+               </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 max-w-6xl mx-auto w-full">
+              
+              {/* Info Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                  <h3 className="font-semibold text-blue-900 mb-4 flex items-center gap-2"><Building size={20}/> Dados da Empresa</h3>
+                  <div className="space-y-2 text-sm text-blue-800">
+                    <p><span className="font-bold">NIF:</span> {viewingHistoryClient.nif || 'N/A'}</p>
+                    <p><span className="font-bold">Loja:</span> {viewingHistoryClient.shopName || 'Sede'}</p>
+                    <p className="flex items-start gap-2"><MapPin size={16} className="mt-1 shrink-0"/> {viewingHistoryClient.address}, {viewingHistoryClient.postalCode} {viewingHistoryClient.locality}, {viewingHistoryClient.county}</p>
+                  </div>
+                </div>
+
+                <div className="bg-green-50 p-6 rounded-xl border border-green-100">
+                  <h3 className="font-semibold text-green-900 mb-4 flex items-center gap-2"><Phone size={20}/> Contactos</h3>
+                  <div className="space-y-2 text-sm text-green-800">
+                     <p><span className="font-bold">Responsável:</span> {viewingHistoryClient.contactPerson}</p>
+                     <p className="flex items-center gap-2"><AtSign size={16}/> {viewingHistoryClient.email}</p>
+                     <p className="flex items-center gap-2"><Phone size={16}/> {viewingHistoryClient.phone}</p>
+                  </div>
+                </div>
+
+                <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
+                  <h3 className="font-semibold text-purple-900 mb-4 flex items-center gap-2"><Calendar size={20}/> Atividade</h3>
+                  <div className="space-y-2 text-sm text-purple-800">
+                     <p><span className="font-bold">Estado:</span> <span className="px-2 py-0.5 bg-white rounded-full text-xs border border-purple-200">{viewingHistoryClient.status}</span></p>
+                     <p><span className="font-bold">Última Visita:</span> {viewingHistoryClient.lastVisit}</p>
+                     <p><span className="font-bold">Total Relatórios:</span> {reports.filter(r => r.clientId === viewingHistoryClient.id).length}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reports History */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-bold text-gray-800">Histórico de Intervenções</h3>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                   <table className="w-full text-left">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Data / Hora</th>
+                        <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Tipo de Relatório</th>
+                        <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Técnico</th>
+                        <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {reports.filter(r => r.clientId === viewingHistoryClient.id).length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
+                            Ainda não existem relatórios para este cliente.
+                          </td>
+                        </tr>
+                      ) : (
+                        reports
+                        .filter(r => r.clientId === viewingHistoryClient.id)
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                        .map(report => (
+                        <tr key={report.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                             <p className="font-medium text-gray-900">{report.date}</p>
+                             <p className="text-xs text-gray-500">{report.startTime} - {report.endTime}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs rounded-full font-medium border border-blue-100">
+                              {report.typeName}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{report.auditorName}</td>
+                          <td className="px-6 py-4 text-right">
+                             <div className="flex justify-end gap-2">
+                                <button onClick={() => handleDownloadPDF(report)} className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-1 shadow-sm">
+                                  <Download size={14} /> PDF
+                                </button>
+                                <button onClick={() => handleEmailReport(report)} className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 flex items-center gap-1 shadow-sm">
+                                  <Mail size={14} /> Email
+                                </button>
+                             </div>
+                          </td>
+                        </tr>
+                      )))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
           </div>
         )}
