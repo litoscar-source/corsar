@@ -22,7 +22,10 @@ import {
   Download,
   Phone,
   MapPin,
-  AtSign
+  AtSign,
+  Upload,
+  Camera,
+  Eye
 } from 'lucide-react';
 import { MOCK_USERS, MOCK_CLIENTS, MOCK_REPORTS, REPORT_TEMPLATES, DEFAULT_COMPANY_SETTINGS } from './constants';
 import { User, Client, Report, UserRole, ReportTypeKey, CompanySettings } from './types';
@@ -65,6 +68,10 @@ const App: React.FC = () => {
   const [isReportTypeModalOpen, setIsReportTypeModalOpen] = useState(false);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<ReportTypeKey | null>(null);
   
+  // Report Edit/View State
+  const [editingReport, setEditingReport] = useState<Report | null>(null);
+  const [viewingReport, setViewingReport] = useState<Report | null>(null);
+
   // --- Derived State ---
   const filteredClients = clients.filter(c => 
     c.name.toLowerCase().includes(clientSearch.toLowerCase()) || 
@@ -148,17 +155,33 @@ const App: React.FC = () => {
 
   // --- Actions: Users ---
 
-  const handleSaveUser = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    
+    // Handle File Upload
+    const fileInput = (e.currentTarget.elements.namedItem('avatarFile') as HTMLInputElement);
+    let avatarUrl = editingUser?.avatar || `https://ui-avatars.com/api/?name=${formData.get('name')}&background=random`;
+
+    if (fileInput.files && fileInput.files[0]) {
+       const file = fileInput.files[0];
+       avatarUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+       });
+    }
+
+    // Get Allowed Templates (Permissions)
+    const allowedTemplates = formData.getAll('allowedTemplates') as ReportTypeKey[];
     
     const userData: User = {
       id: editingUser ? editingUser.id : `u-${Date.now()}`,
       name: formData.get('name') as string,
       role: formData.get('role') as UserRole,
       pin: formData.get('pin') as string,
-      avatar: editingUser?.avatar || `https://ui-avatars.com/api/?name=${formData.get('name')}&background=random`,
-      allowedTemplates: editingUser ? editingUser.allowedTemplates : [] // Keep existing or empty
+      avatar: avatarUrl,
+      allowedTemplates: allowedTemplates.length > 0 ? allowedTemplates : [] 
     };
 
     if (editingUser) {
@@ -178,6 +201,8 @@ const App: React.FC = () => {
 
   const initReportCreation = (client: Client) => {
     setSelectedClientForReport(client);
+    setEditingReport(null); // Ensure we are not editing
+    setViewingReport(null);
     setIsReportTypeModalOpen(true);
   };
 
@@ -186,11 +211,42 @@ const App: React.FC = () => {
     setIsReportTypeModalOpen(false);
   };
 
+  const handleEditReport = (report: Report) => {
+    if (currentUser?.role !== UserRole.ADMIN) return;
+    const client = clients.find(c => c.id === report.clientId);
+    if (!client) return;
+    
+    setSelectedClientForReport(client);
+    setSelectedTemplateKey(report.typeKey);
+    setEditingReport(report);
+    setViewingReport(null);
+  };
+
+  const handleViewReport = (report: Report) => {
+    const client = clients.find(c => c.id === report.clientId);
+    if (!client) return;
+    
+    setSelectedClientForReport(client);
+    setSelectedTemplateKey(report.typeKey);
+    setViewingReport(report);
+    setEditingReport(null);
+  };
+
   const handleSaveReport = (report: Report) => {
-    setReports([report, ...reports]);
-    setClients(clients.map(c => c.id === report.clientId ? { ...c, lastVisit: report.date } : c));
+    // Check if updating or creating
+    const exists = reports.some(r => r.id === report.id);
+    
+    if (exists) {
+      setReports(reports.map(r => r.id === report.id ? report : r));
+    } else {
+      setReports([report, ...reports]);
+      setClients(clients.map(c => c.id === report.clientId ? { ...c, lastVisit: report.date } : c));
+    }
+
     setSelectedTemplateKey(null);
     setSelectedClientForReport(null);
+    setEditingReport(null);
+    setViewingReport(null);
     setCurrentScreen(Screen.REPORTS);
   };
 
@@ -225,18 +281,39 @@ const App: React.FC = () => {
     }
   };
 
+  const openGoogleMaps = (lat: number, lng: number) => {
+    window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank');
+  };
+
   // --- Actions: Company Settings ---
-  const handleSaveCompanySettings = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveCompanySettings = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (currentUser?.role !== UserRole.ADMIN) return;
+    
     const formData = new FormData(e.currentTarget);
+    const fileInput = e.currentTarget.elements.namedItem('logoFile') as HTMLInputElement;
+    
+    let logoUrl = companySettings.logoUrl;
+
+    if (fileInput.files && fileInput.files[0]) {
+       const file = fileInput.files[0];
+       logoUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+       });
+    }
+
     setCompanySettings({
       name: formData.get('name') as string,
       nif: formData.get('nif') as string,
       address: formData.get('address') as string,
+      postalCode: formData.get('postalCode') as string,
+      locality: formData.get('locality') as string,
       email: formData.get('email') as string,
       phone: formData.get('phone') as string,
       website: formData.get('website') as string,
+      logoUrl: logoUrl
     });
     alert("Definições da empresa atualizadas.");
   };
@@ -248,7 +325,7 @@ const App: React.FC = () => {
     return <LoginScreen users={users} onLogin={handleLogin} />;
   }
 
-  // If creating report
+  // If creating, editing or viewing report
   if (selectedClientForReport && selectedTemplateKey) {
     return (
       <ReportForm 
@@ -260,7 +337,11 @@ const App: React.FC = () => {
         onCancel={() => {
           setSelectedTemplateKey(null);
           setSelectedClientForReport(null);
+          setEditingReport(null);
+          setViewingReport(null);
         }}
+        initialReport={editingReport || viewingReport || undefined}
+        readOnly={!!viewingReport}
       />
     );
   }
@@ -301,7 +382,7 @@ const App: React.FC = () => {
 
         <div className="p-4 border-t border-gray-100">
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-3">
-            <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full bg-gray-200" />
+            <img src={currentUser.avatar} alt="User" className="w-10 h-10 rounded-full bg-gray-200 object-cover" />
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-bold text-gray-800 truncate">{currentUser.name}</p>
               <p className="text-xs text-gray-500 truncate">{currentUser.role}</p>
@@ -354,9 +435,14 @@ const App: React.FC = () => {
                           <p className="text-sm text-gray-500">{report.typeName} • {report.date}</p>
                         </div>
                       </div>
-                      <button onClick={() => handleDownloadPDF(report)} className="p-2 text-gray-500 hover:text-blue-600">
-                         <FileText size={18} />
-                      </button>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleViewReport(report)} className="p-2 text-gray-500 hover:text-blue-600" title="Visualizar">
+                           <Eye size={18} />
+                        </button>
+                        <button onClick={() => handleDownloadPDF(report)} className="p-2 text-gray-500 hover:text-blue-600" title="PDF">
+                           <FileText size={18} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -470,16 +556,25 @@ const App: React.FC = () => {
                           <td className="px-6 py-4 text-gray-600">{report.auditorName}</td>
                           <td className="px-6 py-4 text-right">
                              <div className="flex justify-end gap-2">
+                                <button onClick={() => handleViewReport(report)} className="p-2 text-purple-600 hover:bg-purple-50 rounded" title="Visualizar">
+                                  <Eye size={18} />
+                                </button>
                                 <button onClick={() => handleDownloadPDF(report)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="Ver PDF">
                                   <FileText size={18} />
                                 </button>
                                 {currentUser.role === UserRole.ADMIN && (
                                   <>
+                                    <button 
+                                      onClick={() => handleEditReport(report)}
+                                      className="p-2 text-green-600 hover:bg-green-50 rounded" title="Editar Relatório">
+                                      <Edit2 size={18} />
+                                    </button>
+                                    
                                     {report.gpsLocation && (
                                         <button 
-                                          onClick={() => alert(`GPS: ${report.gpsLocation?.lat}, ${report.gpsLocation?.lng}`)} 
-                                          className="p-2 text-gray-600 hover:bg-gray-100 rounded" title="Ver Localização GPS">
-                                          <Building size={18} />
+                                          onClick={() => openGoogleMaps(report.gpsLocation!.lat, report.gpsLocation!.lng)} 
+                                          className="p-2 text-orange-600 hover:bg-orange-50 rounded" title="Abrir no Maps">
+                                          <MapPin size={18} />
                                         </button>
                                     )}
                                     <button onClick={() => handleDeleteReport(report.id)} className="p-2 text-red-600 hover:bg-red-50 rounded" title="Apagar">
@@ -506,30 +601,57 @@ const App: React.FC = () => {
                <section>
                  <h2 className="text-xl font-bold text-gray-800 mb-4">Dados da Empresa (Sede)</h2>
                  <form onSubmit={handleSaveCompanySettings} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                    
+                    {/* Logo Section */}
+                    <div className="md:col-span-2 mb-6 p-4 border border-dashed border-gray-300 rounded-lg bg-gray-50 flex flex-col items-center justify-center">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Logótipo da Empresa</label>
+                        <div className="flex items-center gap-6">
+                            {companySettings.logoUrl && (
+                                <div className="w-24 h-24 border rounded-lg bg-white flex items-center justify-center p-2 shadow-sm">
+                                    <img src={companySettings.logoUrl} alt="Logo Atual" className="max-w-full max-h-full object-contain" />
+                                </div>
+                            )}
+                            <label className="cursor-pointer bg-white border border-gray-300 px-4 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 shadow-sm transition-colors">
+                                <Upload size={18} />
+                                <span>{companySettings.logoUrl ? 'Alterar Logótipo' : 'Carregar Logótipo'}</span>
+                                <input type="file" name="logoFile" accept="image/*" className="hidden" />
+                            </label>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">Recomendado: PNG ou JPG (Fundo transparente)</p>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Nome da Empresa</label>
-                        <input name="name" defaultValue={companySettings.name} className="w-full p-2 border rounded" required />
+                        <input name="name" defaultValue={companySettings.name} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" required />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700">NIF</label>
-                        <input name="nif" defaultValue={companySettings.nif} className="w-full p-2 border rounded" required />
+                        <input name="nif" defaultValue={companySettings.nif} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" required />
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">Morada</label>
-                        <input name="address" defaultValue={companySettings.address} className="w-full p-2 border rounded" required />
+                        <input name="address" defaultValue={companySettings.address} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Código Postal</label>
+                        <input name="postalCode" defaultValue={companySettings.postalCode} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Localidade</label>
+                        <input name="locality" defaultValue={companySettings.locality} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Email Geral</label>
-                        <input name="email" defaultValue={companySettings.email} className="w-full p-2 border rounded" required />
+                        <input name="email" defaultValue={companySettings.email} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" required />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Telefone</label>
-                        <input name="phone" defaultValue={companySettings.phone} className="w-full p-2 border rounded" required />
+                        <input name="phone" defaultValue={companySettings.phone} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" required />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Website</label>
-                        <input name="website" defaultValue={companySettings.website} className="w-full p-2 border rounded" />
+                        <input name="website" defaultValue={companySettings.website} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" />
                       </div>
                     </div>
                     <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Guardar Dados</button>
@@ -558,12 +680,12 @@ const App: React.FC = () => {
                       <tbody className="divide-y divide-gray-100">
                         {users.map(u => (
                           <tr key={u.id}>
-                            <td className="px-6 py-4 flex items-center gap-2">
-                               <img src={u.avatar} className="w-8 h-8 rounded-full bg-gray-200" />
+                            <td className="px-6 py-4 flex items-center gap-2 text-gray-900">
+                               <img src={u.avatar} className="w-8 h-8 rounded-full bg-gray-200 object-cover" />
                                {u.name}
                             </td>
-                            <td className="px-6 py-4">{u.role}</td>
-                            <td className="px-6 py-4 font-mono">******</td>
+                            <td className="px-6 py-4 text-gray-900">{u.role}</td>
+                            <td className="px-6 py-4 font-mono text-gray-600">******</td>
                             <td className="px-6 py-4 text-right">
                                <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="text-blue-600 mr-2 hover:underline">Editar</button>
                                <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 hover:underline">Apagar</button>
@@ -655,17 +777,47 @@ const App: React.FC = () => {
               <form onSubmit={handleSaveUser} className="p-6 space-y-4">
                 <div>
                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
-                   <input name="name" defaultValue={editingUser?.name} required className="w-full p-2 border rounded" />
+                   <input name="name" defaultValue={editingUser?.name} required className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900" />
                 </div>
                 <div>
                    <label className="block text-sm font-medium text-gray-700 mb-1">Função</label>
-                   <select name="role" defaultValue={editingUser?.role || UserRole.TECNICO} className="w-full p-2 border rounded">
+                   <select name="role" defaultValue={editingUser?.role || UserRole.TECNICO} className="w-full p-2 border border-gray-300 rounded bg-white text-gray-900">
                       {Object.values(UserRole).map(r => <option key={r} value={r}>{r}</option>)}
                    </select>
                 </div>
                  <div>
                    <label className="block text-sm font-medium text-gray-700 mb-1">PIN (6 dígitos)</label>
-                   <input name="pin" defaultValue={editingUser?.pin} pattern="\d{6}" maxLength={6} required className="w-full p-2 border rounded font-mono" placeholder="123456" />
+                   <input name="pin" defaultValue={editingUser?.pin} pattern="\d{6}" maxLength={6} required className="w-full p-2 border border-gray-300 rounded font-mono bg-white text-gray-900" placeholder="123456" />
+                </div>
+                
+                {/* Template Permissions Checklist */}
+                <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Permissões de Relatórios</label>
+                   <div className="border border-gray-300 rounded bg-gray-50 max-h-40 overflow-y-auto p-2 space-y-2">
+                      {Object.values(REPORT_TEMPLATES).map(tpl => (
+                        <label key={tpl.key} className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors">
+                          <input 
+                            type="checkbox" 
+                            name="allowedTemplates" 
+                            value={tpl.key}
+                            defaultChecked={editingUser ? editingUser.allowedTemplates.includes(tpl.key) : true}
+                            className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4" 
+                          />
+                          <span className="text-sm text-gray-700">{tpl.label}</span>
+                        </label>
+                      ))}
+                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Foto de Perfil (Opcional)</label>
+                  <div className="flex items-center gap-4">
+                    {editingUser?.avatar && <img src={editingUser.avatar} className="w-12 h-12 rounded-full object-cover" />}
+                    <label className="cursor-pointer bg-gray-100 px-4 py-2 rounded text-sm text-gray-700 hover:bg-gray-200 flex items-center gap-2">
+                       <Upload size={16} /> Carregar Foto
+                       <input type="file" name="avatarFile" accept="image/*" className="hidden" />
+                    </label>
+                  </div>
                 </div>
                 <div className="pt-4 flex justify-end gap-3">
                   <button type="button" onClick={() => setIsUserModalOpen(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancelar</button>
@@ -801,6 +953,9 @@ const App: React.FC = () => {
                           <td className="px-6 py-4 text-sm text-gray-600">{report.auditorName}</td>
                           <td className="px-6 py-4 text-right">
                              <div className="flex justify-end gap-2">
+                                <button onClick={() => handleViewReport(report)} className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100 flex items-center gap-1 shadow-sm">
+                                  <Eye size={14} /> Ver
+                                </button>
                                 <button onClick={() => handleDownloadPDF(report)} className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-1 shadow-sm">
                                   <Download size={14} /> PDF
                                 </button>

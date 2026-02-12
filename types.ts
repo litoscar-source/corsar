@@ -81,6 +81,8 @@ export interface CompanySettings {
   name: string;
   nif: string;
   address: string;
+  postalCode?: string;
+  locality?: string;
   email: string;
   phone: string;
   website: string;
