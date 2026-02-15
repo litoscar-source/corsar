@@ -32,7 +32,11 @@ export interface Client {
   shopName?: string; // Nome da Loja (se aplicável)
   
   lastVisit?: string;
+  visitFrequency?: number; // Frequency in days for alerts
   status: 'Ativo' | 'Inativo';
+  
+  // Access Control
+  accountManagerId?: string; // ID of the commercial responsible for this client
 }
 
 export interface AuditCriteria {
@@ -46,6 +50,22 @@ export interface ReportTemplate {
   key: ReportTypeKey;
   label: string;
   defaultCriteria: { label: string }[];
+}
+
+export interface OrderItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number; // Percentage
+  total: number;
+}
+
+export interface Order {
+  items: OrderItem[];
+  deliveryConditions: string;
+  observations: string;
+  totalValue: number;
 }
 
 export interface Report {
@@ -66,6 +86,9 @@ export interface Report {
   summary: string;
   clientObservations?: string;
   
+  // Order Data (Optional - usually for Commercial Visits)
+  order?: Order;
+
   // Signatures
   auditorSignerName: string;
   auditorSignature: string | null;

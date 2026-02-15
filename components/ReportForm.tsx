@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Report, Client, User, AuditCriteria, ReportTemplate, CompanySettings } from '../types';
+import { Report, Client, User, AuditCriteria, ReportTemplate, CompanySettings, OrderItem } from '../types';
 import SignaturePad from './SignaturePad';
-import { generatePDF } from '../services/pdfService';
-import { Save, CheckCircle, AlertCircle, MinusCircle, FileText, Download, Mail, MapPin, X } from 'lucide-react';
+import { generatePDF, generateOrderPDF } from '../services/pdfService';
+import { Save, CheckCircle, AlertCircle, MinusCircle, FileText, Download, Mail, MapPin, X, ShoppingCart, Plus, Trash2 } from 'lucide-react';
 
 interface ReportFormProps {
   client: Client;
@@ -38,6 +38,18 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   const [summary, setSummary] = useState(initialReport?.summary || '');
   const [clientObservations, setClientObservations] = useState(initialReport?.clientObservations || '');
   
+  // --- ORDER STATE ---
+  const [orderItems, setOrderItems] = useState<OrderItem[]>(initialReport?.order?.items || []);
+  const [orderDeliveryConditions, setOrderDeliveryConditions] = useState(initialReport?.order?.deliveryConditions || '');
+  const [orderObservations, setOrderObservations] = useState(initialReport?.order?.observations || '');
+  const [orderTotal, setOrderTotal] = useState(initialReport?.order?.totalValue || 0);
+
+  // Recalculate total when items change
+  useEffect(() => {
+    const total = orderItems.reduce((acc, item) => acc + item.total, 0);
+    setOrderTotal(total);
+  }, [orderItems]);
+
   // Signature States
   const [auditorName, setAuditorName] = useState(initialReport?.auditorSignerName || auditor.name);
   const [auditorSignature, setAuditorSignature] = useState<string | null>(initialReport?.auditorSignature || null);
@@ -46,6 +58,10 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   const [clientSignature, setClientSignature] = useState<string | null>(initialReport?.clientSignature || null);
   
   const [gpsCoords, setGpsCoords] = useState<{lat: number, lng: number} | undefined>(initialReport?.gpsLocation);
+
+  const isCommercialVisit = template.key === 'visit_comercial';
+  const hasCriteria = criteria.length > 0;
+  const isGeneralIntervention = template.key === 'intervention_general';
 
   const handleCriteriaStatusChange = (id: string, status: AuditCriteria['status']) => {
     if (readOnly) return;
@@ -56,17 +72,56 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
     setCriteria(prev => prev.map(c => c.id === id ? { ...c, notes } : c));
   };
 
-  const handleFinish = async (action: 'save' | 'pdf' | 'email') => {
+  // --- Order Logic ---
+  const addOrderItem = () => {
+      const newItem: OrderItem = {
+          id: `item-${Date.now()}`,
+          productName: '',
+          quantity: 1,
+          unitPrice: 0,
+          discount: 0,
+          total: 0
+      };
+      setOrderItems([...orderItems, newItem]);
+  };
+
+  const updateOrderItem = (id: string, field: keyof OrderItem, value: any) => {
+      const updatedItems = orderItems.map(item => {
+          if (item.id === id) {
+              const updated = { ...item, [field]: value };
+              // Recalculate line total
+              if (field === 'quantity' || field === 'unitPrice' || field === 'discount') {
+                  const qty = field === 'quantity' ? Number(value) : item.quantity;
+                  const price = field === 'unitPrice' ? Number(value) : item.unitPrice;
+                  const disc = field === 'discount' ? Number(value) : item.discount;
+                  updated.total = (qty * price) * (1 - disc / 100);
+              }
+              return updated;
+          }
+          return item;
+      });
+      setOrderItems(updatedItems);
+  };
+
+  const removeOrderItem = (id: string) => {
+      setOrderItems(orderItems.filter(i => i.id !== id));
+  };
+
+  const handleFinish = async (action: 'save' | 'pdf' | 'email' | 'order_pdf') => {
     // Basic validation only if saving
     if (action === 'save') {
-      if (!auditorSignature || !clientSignature) {
-        alert("Ambas as assinaturas são obrigatórias.");
-        return;
+      // Validate signatures ONLY if NOT a commercial visit
+      if (!isCommercialVisit) {
+        if (!auditorSignature || !clientSignature) {
+          alert("Ambas as assinaturas são obrigatórias para este tipo de relatório.");
+          return;
+        }
+        if (!auditorName.trim() || !clientName.trim()) {
+          alert("Os nomes dos signatários são obrigatórios.");
+          return;
+        }
       }
-      if (!auditorName.trim() || !clientName.trim()) {
-        alert("Os nomes dos signatários são obrigatórios.");
-        return;
-      }
+      
       if (!window.confirm("Deseja gravar o relatório?")) {
         return;
       }
@@ -109,7 +164,14 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
       clientSignerName: clientName,
       clientSignature,
       gpsLocation: location,
-      status: 'Finalizado'
+      status: 'Finalizado',
+      // Attach order if it exists
+      order: orderItems.length > 0 ? {
+          items: orderItems,
+          deliveryConditions: orderDeliveryConditions,
+          observations: orderObservations,
+          totalValue: orderTotal
+      } : undefined
     };
 
     if (action === 'pdf' || action === 'email') {
@@ -126,13 +188,15 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
       }
     }
 
+    if (action === 'order_pdf') {
+        const doc = generateOrderPDF(reportData, client, companySettings);
+        doc.save(`Encomenda_${client.name.replace(/\s+/g, '_')}_${date}.pdf`);
+    }
+
     if (action === 'save') {
       onSave(reportData);
     }
   };
-
-  const hasCriteria = criteria.length > 0;
-  const isGeneralIntervention = template.key === 'intervention_general';
 
   // Title logic
   let title = 'Novo Relatório';
@@ -155,9 +219,18 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
           <button onClick={() => handleFinish('email')} className="hidden md:flex px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 items-center gap-2 text-sm">
              <Mail size={16} /> Enviar
           </button>
-           <button onClick={() => handleFinish('pdf')} className="hidden md:flex px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-medium hover:bg-indigo-200 items-center gap-2 text-sm">
-             <Download size={16} /> PDF
-          </button>
+          
+          {/* Export Options */}
+          <div className="hidden md:flex gap-1">
+               <button onClick={() => handleFinish('pdf')} className="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-l-lg font-medium hover:bg-indigo-200 items-center gap-2 text-sm flex border-r border-indigo-200">
+                <Download size={16} /> PDF Relatório
+              </button>
+              {isCommercialVisit && orderItems.length > 0 && (
+                <button onClick={() => handleFinish('order_pdf')} className="px-3 py-2 bg-emerald-100 text-emerald-700 rounded-r-lg font-medium hover:bg-emerald-200 items-center gap-2 text-sm flex" title="PDF apenas da Encomenda">
+                    <ShoppingCart size={16} /> PDF Enc.
+                </button>
+              )}
+          </div>
 
           {!readOnly && (
             <button onClick={() => handleFinish('save')} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-200 text-sm">
@@ -180,7 +253,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                   value={date} 
                   disabled={readOnly}
                   onChange={e => setDate(e.target.value)}
-                  // CHANGED: bg-white instead of bg-gray-50
                   className="w-full p-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-60 disabled:bg-gray-100" 
                 />
               </div>
@@ -191,7 +263,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                   value={startTime}
                   disabled={readOnly}
                   onChange={e => setStartTime(e.target.value)} 
-                  // CHANGED: bg-white instead of bg-gray-50
                   className="w-full p-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-60 disabled:bg-gray-100" 
                 />
               </div>
@@ -202,7 +273,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                   value={endTime}
                   disabled={readOnly}
                   onChange={e => setEndTime(e.target.value)} 
-                  // CHANGED: bg-white instead of bg-gray-50
                   className="w-full p-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-60 disabled:bg-gray-100" 
                 />
               </div>
@@ -223,7 +293,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                   value={contractNumber} 
                   disabled={readOnly}
                   onChange={e => setContractNumber(e.target.value)}
-                  // CHANGED: bg-white instead of bg-gray-50
                   className="w-full p-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-60 disabled:bg-gray-100" 
                 />
               </div>
@@ -235,7 +304,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                   value={routeNumber} 
                   disabled={readOnly}
                   onChange={e => setRouteNumber(e.target.value)}
-                  // CHANGED: bg-white instead of bg-gray-50
                   className="w-full p-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-60 disabled:bg-gray-100" 
                 />
               </div>
@@ -303,13 +371,139 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                       disabled={readOnly}
                       onChange={e => handleCriteriaNotesChange(item.id, e.target.value)}
                       rows={1}
-                      // CHANGED: bg-white instead of bg-gray-50
                       className="w-full p-3 bg-white text-black border-b border-gray-300 focus:bg-white focus:border-blue-500 outline-none transition-colors text-base rounded-lg disabled:opacity-70"
                     />
                   </div>
                 ))}
               </div>
             </div>
+          )}
+          
+          {/* COMMERCIAL VISIT - ORDER SECTION */}
+          {isCommercialVisit && (
+              <div className="space-y-4">
+                  <div className="flex justify-between items-center px-2">
+                    <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <ShoppingCart size={20} className="text-emerald-600" /> Nova Encomenda
+                    </h3>
+                    {!readOnly && (
+                        <button onClick={addOrderItem} className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1 hover:bg-emerald-700">
+                            <Plus size={16} /> Adicionar Produto
+                        </button>
+                    )}
+                  </div>
+                  
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-1/3">Produto</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-20">Qtd</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-24">Preço (€)</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-20">Desc.%</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Total</th>
+                                    {!readOnly && <th className="px-4 py-3 w-10"></th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {orderItems.map((item) => (
+                                    <tr key={item.id}>
+                                        <td className="p-2">
+                                            <input 
+                                                className="w-full p-2 border rounded bg-white text-gray-900"
+                                                placeholder="Descrição do produto"
+                                                value={item.productName}
+                                                onChange={(e) => updateOrderItem(item.id, 'productName', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            <input 
+                                                type="number"
+                                                min="1"
+                                                className="w-full p-2 border rounded bg-white text-gray-900 text-center"
+                                                value={item.quantity}
+                                                onChange={(e) => updateOrderItem(item.id, 'quantity', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            <input 
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                className="w-full p-2 border rounded bg-white text-gray-900 text-right"
+                                                value={item.unitPrice}
+                                                onChange={(e) => updateOrderItem(item.id, 'unitPrice', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                             <input 
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                className="w-full p-2 border rounded bg-white text-gray-900 text-center"
+                                                value={item.discount}
+                                                onChange={(e) => updateOrderItem(item.id, 'discount', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2 text-right font-bold text-gray-800">
+                                            {item.total.toFixed(2)}€
+                                        </td>
+                                        {!readOnly && (
+                                            <td className="p-2 text-center">
+                                                <button onClick={() => removeOrderItem(item.id)} className="text-red-500 hover:text-red-700">
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                                {orderItems.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="p-4 text-center text-gray-400 text-sm">
+                                            Nenhum produto adicionado à encomenda.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                            <tfoot className="bg-gray-50 font-bold">
+                                <tr>
+                                    <td colSpan={4} className="px-4 py-3 text-right text-gray-700">Valor Total:</td>
+                                    <td className="px-4 py-3 text-right text-emerald-700 text-lg">{orderTotal.toFixed(2)}€</td>
+                                    {!readOnly && <td></td>}
+                                </tr>
+                            </tfoot>
+                        </table>
+                      </div>
+                      
+                      <div className="p-4 bg-emerald-50 border-t border-emerald-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-emerald-800 uppercase mb-1">Condições de Entrega</label>
+                              <input 
+                                value={orderDeliveryConditions}
+                                onChange={(e) => setOrderDeliveryConditions(e.target.value)}
+                                disabled={readOnly}
+                                className="w-full p-2 border border-emerald-200 rounded bg-white text-gray-900"
+                                placeholder="Ex: Entrega em 48h, Portes incluídos..."
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-emerald-800 uppercase mb-1">Observações da Encomenda</label>
+                              <input 
+                                value={orderObservations}
+                                onChange={(e) => setOrderObservations(e.target.value)}
+                                disabled={readOnly}
+                                className="w-full p-2 border border-emerald-200 rounded bg-white text-gray-900"
+                                placeholder="Notas internas ou para faturação..."
+                              />
+                          </div>
+                      </div>
+                  </div>
+              </div>
           )}
 
           {/* Main Report / Summary Section */}
@@ -322,7 +516,6 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
               disabled={readOnly}
               onChange={e => setSummary(e.target.value)}
               placeholder={isGeneralIntervention ? "Descreva detalhadamente a intervenção realizada..." : "Escreva um resumo e conclusões..."}
-              // CHANGED: bg-white
               className={`w-full p-4 bg-white text-black border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm ${isGeneralIntervention ? 'h-64' : 'h-32'} disabled:bg-gray-100 disabled:text-gray-700`}
             />
           </div>
@@ -335,51 +528,50 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
               disabled={readOnly}
               onChange={e => setClientObservations(e.target.value)}
               placeholder="Registe aqui quaisquer observações ou comentários do cliente..."
-              // CHANGED: bg-white
               className="w-full p-4 bg-white text-black border border-amber-200 rounded-lg h-24 outline-none focus:ring-2 focus:ring-amber-500 shadow-sm disabled:bg-gray-100 disabled:text-gray-700"
             />
           </div>
 
-          {/* Signatures */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Técnico (Auditor)</label>
-              <input 
-                type="text" 
-                value={auditorName} 
-                disabled={readOnly}
-                onChange={e => setAuditorName(e.target.value)}
-                // CHANGED: bg-white
-                className="w-full p-2 mb-4 bg-white text-black border border-gray-300 rounded outline-none disabled:bg-gray-100"
-              />
-              <SignaturePad 
-                label="Assinatura"
-                onEnd={setAuditorSignature}
-                initialData={auditorSignature}
-                disabled={readOnly}
-              />
-            </div>
+          {/* Signatures - HIDE FOR COMMERCIAL VISITS */}
+          {!isCommercialVisit && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Técnico (Auditor)</label>
+                <input 
+                  type="text" 
+                  value={auditorName} 
+                  disabled={readOnly}
+                  onChange={e => setAuditorName(e.target.value)}
+                  className="w-full p-2 mb-4 bg-white text-black border border-gray-300 rounded outline-none disabled:bg-gray-100"
+                />
+                <SignaturePad 
+                  label="Assinatura"
+                  onEnd={setAuditorSignature}
+                  initialData={auditorSignature}
+                  disabled={readOnly}
+                />
+              </div>
 
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cliente</label>
-               <input 
-                type="text" 
-                value={clientName} 
-                disabled={readOnly}
-                onChange={e => setClientName(e.target.value)}
-                // CHANGED: bg-white
-                className="w-full p-2 mb-4 bg-white text-black border border-gray-300 rounded outline-none disabled:bg-gray-100"
-              />
-              <SignaturePad 
-                label="Assinatura"
-                onEnd={setClientSignature}
-                initialData={clientSignature}
-                disabled={readOnly}
-              />
-            </div>
+              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cliente</label>
+                 <input 
+                  type="text" 
+                  value={clientName} 
+                  disabled={readOnly}
+                  onChange={e => setClientName(e.target.value)}
+                  className="w-full p-2 mb-4 bg-white text-black border border-gray-300 rounded outline-none disabled:bg-gray-100"
+                />
+                <SignaturePad 
+                  label="Assinatura"
+                  onEnd={setClientSignature}
+                  initialData={clientSignature}
+                  disabled={readOnly}
+                />
+              </div>
 
-          </div>
+            </div>
+          )}
 
         </div>
       </div>

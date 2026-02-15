@@ -175,22 +175,28 @@ export const MOCK_CLIENTS: Client[] = [
   { 
     id: 'c1', name: 'Restaurante O Marisco', nif: '501234567', 
     address: 'Rua do Mar, 12', postalCode: '1200-001', locality: 'Lisboa', county: 'Lisboa', shopName: 'Marisco Chiado',
-    contactPerson: 'Sr. Manuel', email: 'manuel@marisco.pt', phone: '912345678', status: 'Ativo', lastVisit: '2023-10-15' 
+    contactPerson: 'Sr. Manuel', email: 'manuel@marisco.pt', phone: '912345678', status: 'Ativo', lastVisit: '2023-10-15',
+    accountManagerId: 'u3', // Assigned to Bruno Dias
+    visitFrequency: 30
   },
   { 
     id: 'c2', name: 'Hotel Central', nif: '502345678', 
     address: 'Av. da Liberdade, 200', postalCode: '1250-100', locality: 'Lisboa', county: 'Lisboa',
-    contactPerson: 'Dra. Sofia', email: 'sofia@hotelcentral.pt', phone: '213456789', status: 'Ativo', lastVisit: '2023-11-02' 
+    contactPerson: 'Dra. Sofia', email: 'sofia@hotelcentral.pt', phone: '213456789', status: 'Ativo', lastVisit: '2023-11-02',
+    accountManagerId: 'u3', // Assigned to Bruno Dias
+    visitFrequency: 45
   },
   { 
     id: 'c3', name: 'Oficina Turbo', nif: '503456789', 
     address: 'Zona Industrial, Lote 4', postalCode: '4400-001', locality: 'Maia', county: 'Maia', shopName: 'Turbo Norte',
-    contactPerson: 'Eng. Rui', email: 'rui@turbo.pt', phone: '934567890', status: 'Inativo', lastVisit: '2023-08-20' 
+    contactPerson: 'Eng. Rui', email: 'rui@turbo.pt', phone: '934567890', status: 'Inativo', lastVisit: '2023-08-20',
+    visitFrequency: 60
   },
   { 
     id: 'c4', name: 'Clube de Natação', nif: '504567890', 
     address: 'Complexo Desportivo', postalCode: '3000-111', locality: 'Coimbra', county: 'Coimbra',
-    contactPerson: 'Joana', email: 'joana@natacao.pt', phone: '967890123', status: 'Ativo', lastVisit: '2023-12-05' 
+    contactPerson: 'Joana', email: 'joana@natacao.pt', phone: '967890123', status: 'Ativo', lastVisit: '2023-12-05',
+    visitFrequency: 30
   },
 ];
 

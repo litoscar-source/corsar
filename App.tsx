@@ -25,13 +25,15 @@ import {
   AtSign,
   Upload,
   Camera,
-  Eye
+  Eye,
+  AlertTriangle,
+  ShoppingCart
 } from 'lucide-react';
 import { MOCK_USERS, MOCK_CLIENTS, MOCK_REPORTS, REPORT_TEMPLATES, DEFAULT_COMPANY_SETTINGS } from './constants';
 import { User, Client, Report, UserRole, ReportTypeKey, CompanySettings } from './types';
 import ReportForm from './components/ReportForm';
 import LoginScreen from './components/LoginScreen';
-import { generatePDF } from './services/pdfService';
+import { generatePDF, generateOrderPDF } from './services/pdfService';
 
 enum Screen {
   DASHBOARD = 'Dashboard',
@@ -72,19 +74,60 @@ const App: React.FC = () => {
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [viewingReport, setViewingReport] = useState<Report | null>(null);
 
-  // --- Derived State ---
-  const filteredClients = clients.filter(c => 
+  // --- Derived State & Access Control ---
+  
+  const isAdmin = currentUser?.role === UserRole.ADMIN;
+
+  // Filter Clients based on Role
+  const availableClients = clients.filter(c => {
+    if (!currentUser) return false;
+    if (currentUser.role === UserRole.ADMIN) return true;
+    if (currentUser.role === UserRole.COMERCIAL) {
+        return c.accountManagerId === currentUser.id;
+    }
+    return true; // Auditors/Technicians usually see all or route based, keeping open for now
+  });
+
+  const filteredClients = availableClients.filter(c => 
     c.name.toLowerCase().includes(clientSearch.toLowerCase()) || 
     (c.nif && c.nif.includes(clientSearch))
   );
 
-  const currentMonthReports = reports.filter(r => {
+  // Filter Reports based on Role (Only see reports for clients you have access to)
+  const availableReports = reports.filter(r => {
+      const client = clients.find(c => c.id === r.clientId);
+      if (!client) return false;
+      if (!currentUser) return false;
+      
+      if (currentUser.role === UserRole.ADMIN) return true;
+      if (currentUser.role === UserRole.COMERCIAL) {
+          return client.accountManagerId === currentUser.id;
+      }
+      return true; 
+  });
+
+  // Dashboard calculations
+  const currentMonthReports = availableReports.filter(r => {
     const rDate = new Date(r.date);
     const now = new Date();
     return rDate.getMonth() === now.getMonth() && rDate.getFullYear() === now.getFullYear();
   });
 
-  const recentReports = reports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+  const recentReports = availableReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+
+  // Order Calculations
+  const currentMonthOrders = currentMonthReports.filter(r => r.order);
+  const currentMonthOrderValue = currentMonthOrders.reduce((acc, r) => acc + (r.order?.totalValue || 0), 0);
+
+  // Alert Calculations (Clients not visited) - Only calculated for display logic, but visibility controlled below
+  const overdueClients = availableClients.filter(c => {
+      if (!c.visitFrequency || !c.lastVisit || c.lastVisit === '-') return false;
+      const last = new Date(c.lastVisit);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - last.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      return diffDays > c.visitFrequency;
+  });
 
   // --- Actions: Auth ---
   const handleLogin = (user: User) => {
@@ -115,9 +158,14 @@ const App: React.FC = () => {
       postalCode: formData.get('postalCode') as string,
       locality: formData.get('locality') as string,
       county: formData.get('county') as string,
+      
+      visitFrequency: Number(formData.get('visitFrequency')) || undefined,
 
       status: 'Ativo',
-      lastVisit: editingClient?.lastVisit || '-'
+      lastVisit: editingClient?.lastVisit || '-',
+      
+      // If creating as commercial, auto-assign. If admin, could add selector (skipping for brevity)
+      accountManagerId: editingClient?.accountManagerId || (currentUser?.role === UserRole.COMERCIAL ? currentUser.id : undefined)
     };
 
     if (editingClient) {
@@ -212,6 +260,7 @@ const App: React.FC = () => {
   };
 
   const handleEditReport = (report: Report) => {
+    // Only Admin or the Author can edit (simplified to Admin for now based on prompt, but logical extension)
     if (currentUser?.role !== UserRole.ADMIN) return;
     const client = clients.find(c => c.id === report.clientId);
     if (!client) return;
@@ -407,16 +456,76 @@ const App: React.FC = () => {
           {/* Dashboard View */}
           {currentScreen === Screen.DASHBOARD && (
             <div className="space-y-6">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                {/* Total Clients Card */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <p className="text-gray-500 text-sm">Total Clientes</p>
-                  <h3 className="text-3xl font-bold text-gray-800 mt-2">{clients.length}</h3>
+                  <p className="text-gray-500 text-sm">Meus Clientes</p>
+                  <h3 className="text-3xl font-bold text-gray-800 mt-2">{availableClients.length}</h3>
                 </div>
+                
+                {/* Reports Month Card */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <p className="text-gray-500 text-sm">Relatórios Emitidos (Mês)</p>
+                  <p className="text-gray-500 text-sm">Relatórios (Mês)</p>
                   <h3 className="text-3xl font-bold text-blue-600 mt-2">{currentMonthReports.length}</h3>
                 </div>
+
+                {/* Orders Month Card (Commercial Focused) */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <p className="text-gray-500 text-sm">Encomendas (Mês)</p>
+                    <div className="flex items-end gap-2 mt-2">
+                        <h3 className="text-3xl font-bold text-emerald-600">{currentMonthOrders.length}</h3>
+                        {/* Only Admin sees value */}
+                        {isAdmin && (
+                          <span className="text-sm text-gray-500 mb-1">({currentMonthOrderValue.toFixed(0)}€)</span>
+                        )}
+                    </div>
+                </div>
+
+                 {/* Alerts Card - ONLY ADMIN SEES ALERTS */}
+                 {isAdmin && (
+                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                      <p className="text-gray-500 text-sm">Alertas de Visita</p>
+                      <h3 className={`text-3xl font-bold mt-2 ${overdueClients.length > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {overdueClients.length}
+                      </h3>
+                  </div>
+                 )}
               </div>
+              
+              {/* ALERTS SECTION (Only Admin) */}
+              {isAdmin && overdueClients.length > 0 && (
+                  <div className="bg-red-50 border border-red-100 rounded-xl overflow-hidden">
+                      <div className="p-4 border-b border-red-100 flex items-center gap-2">
+                          <AlertTriangle className="text-red-600" size={20} />
+                          <h3 className="font-bold text-red-800">Clientes com Visita em Atraso</h3>
+                      </div>
+                      <div className="divide-y divide-red-100">
+                          {overdueClients.map(client => {
+                               const last = new Date(client.lastVisit || '');
+                               const now = new Date();
+                               const diffTime = Math.abs(now.getTime() - last.getTime());
+                               const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                              return (
+                                  <div key={client.id} className="p-4 flex items-center justify-between hover:bg-red-100/50">
+                                      <div>
+                                          <p className="font-semibold text-gray-800">{client.name}</p>
+                                          <p className="text-sm text-red-600">Última visita: {client.lastVisit} (há {diffDays} dias)</p>
+                                          <p className="text-xs text-gray-500">Frequência definida: {client.visitFrequency} dias</p>
+                                      </div>
+                                      <button 
+                                        onClick={() => initReportCreation(client)}
+                                        className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-red-700"
+                                      >
+                                          Visitar Agora
+                                      </button>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </div>
+              )}
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
@@ -424,7 +533,7 @@ const App: React.FC = () => {
                   <button className="text-blue-600 text-sm hover:underline" onClick={() => setCurrentScreen(Screen.REPORTS)}>Ver todos</button>
                 </div>
                 <div className="divide-y divide-gray-100">
-                  {recentReports.map(report => (
+                  {recentReports.length > 0 ? recentReports.map(report => (
                     <div key={report.id} className="p-4 hover:bg-gray-50 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
@@ -444,7 +553,9 @@ const App: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                  ))}
+                  )) : (
+                      <div className="p-6 text-center text-gray-500">Sem relatórios recentes.</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -546,11 +657,12 @@ const App: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {reports.map(report => (
+                      {availableReports.map(report => (
                         <tr key={report.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4">
                              <p className="font-medium text-gray-900">{report.clientName}</p>
                              <p className="text-xs text-gray-500">{report.typeName}</p>
+                             {report.order && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded ml-1">Encomenda</span>}
                           </td>
                           <td className="px-6 py-4 text-gray-600">{report.date}</td>
                           <td className="px-6 py-4 text-gray-600">{report.auditorName}</td>
@@ -559,9 +671,20 @@ const App: React.FC = () => {
                                 <button onClick={() => handleViewReport(report)} className="p-2 text-purple-600 hover:bg-purple-50 rounded" title="Visualizar">
                                   <Eye size={18} />
                                 </button>
-                                <button onClick={() => handleDownloadPDF(report)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="Ver PDF">
+                                <button onClick={() => handleDownloadPDF(report)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="Ver PDF Relatório">
                                   <FileText size={18} />
                                 </button>
+                                {report.order && (
+                                     <button onClick={() => {
+                                         const client = clients.find(c => c.id === report.clientId);
+                                         if(client) {
+                                            const doc = generateOrderPDF(report, client, companySettings);
+                                            doc.save(`Encomenda_${client.name.replace(/\s+/g, '_')}_${report.date}.pdf`);
+                                         }
+                                     }} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded" title="Ver PDF Encomenda">
+                                        <FileText size={18} />
+                                    </button>
+                                )}
                                 {currentUser.role === UserRole.ADMIN && (
                                   <>
                                     <button 
@@ -755,6 +878,19 @@ const App: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Concelho</label>
                     <input name="county" defaultValue={editingClient?.county} required className="w-full p-2 bg-white text-black border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
+
+                  {/* Visit Frequency */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Frequência de Visita (Dias)</label>
+                    <input 
+                      name="visitFrequency" 
+                      type="number" 
+                      min="1"
+                      defaultValue={editingClient?.visitFrequency || 30} 
+                      className="w-full p-2 bg-white text-black border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Para alertas de visita</p>
+                  </div>
                 </div>
 
                 <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 mt-4">
@@ -910,6 +1046,7 @@ const App: React.FC = () => {
                   <div className="space-y-2 text-sm text-purple-800">
                      <p><span className="font-bold">Estado:</span> <span className="px-2 py-0.5 bg-white rounded-full text-xs border border-purple-200">{viewingHistoryClient.status}</span></p>
                      <p><span className="font-bold">Última Visita:</span> {viewingHistoryClient.lastVisit}</p>
+                     <p><span className="font-bold">Frequência:</span> {viewingHistoryClient.visitFrequency || '30'} dias</p>
                      <p><span className="font-bold">Total Relatórios:</span> {reports.filter(r => r.clientId === viewingHistoryClient.id).length}</p>
                   </div>
                 </div>
@@ -929,14 +1066,14 @@ const App: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {reports.filter(r => r.clientId === viewingHistoryClient.id).length === 0 ? (
+                      {availableReports.filter(r => r.clientId === viewingHistoryClient.id).length === 0 ? (
                         <tr>
                           <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
                             Ainda não existem relatórios para este cliente.
                           </td>
                         </tr>
                       ) : (
-                        reports
+                        availableReports
                         .filter(r => r.clientId === viewingHistoryClient.id)
                         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                         .map(report => (
@@ -949,6 +1086,7 @@ const App: React.FC = () => {
                             <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs rounded-full font-medium border border-blue-100">
                               {report.typeName}
                             </span>
+                            {report.order && <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded ml-1">Enc.</span>}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600">{report.auditorName}</td>
                           <td className="px-6 py-4 text-right">

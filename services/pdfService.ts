@@ -203,6 +203,91 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
 
     y = (doc as any).lastAutoTable.finalY + 8;
   }
+  
+  // --- 3.5 ORDER TABLE (If exists) ---
+  if (report.order && report.order.items.length > 0) {
+    
+    // Check if we need new page before order
+    if (pageHeight - y < 60) {
+        doc.addPage();
+        y = 20;
+    }
+
+    drawSectionTitle("Nota de Encomenda", y);
+    y += 5;
+
+    const orderData = report.order.items.map(item => [
+        item.productName,
+        item.quantity.toString(),
+        `${item.unitPrice.toFixed(2)}€`,
+        `${item.discount}%`,
+        `${item.total.toFixed(2)}€`
+    ]);
+
+    autoTable(doc, {
+        startY: y,
+        head: [['Produto / Serviço', 'Qtd', 'Preço Unit.', 'Desc.', 'Total']],
+        body: orderData,
+        theme: 'plain',
+        styles: {
+            fontSize: 7,
+            cellPadding: 2,
+            font: 'helvetica',
+            textColor: COLORS.TEXT,
+            lineColor: [226, 232, 240],
+            lineWidth: 0.1,
+        },
+        headStyles: {
+            fillColor: COLORS.PRIMARY,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 7,
+        },
+        columnStyles: {
+            0: { cellWidth: 'auto' },
+            1: { cellWidth: 15, halign: 'center' },
+            2: { cellWidth: 20, halign: 'right' },
+            3: { cellWidth: 15, halign: 'center' },
+            4: { cellWidth: 25, halign: 'right', fontStyle: 'bold' }
+        },
+        margin: { left: margin, right: margin }
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 4;
+
+    // Total Value
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(COLORS.PRIMARY[0], COLORS.PRIMARY[1], COLORS.PRIMARY[2]);
+    doc.text(`Valor Total: ${report.order.totalValue.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+    y += 8;
+
+    // Delivery Conditions & Obs
+    if (report.order.deliveryConditions || report.order.observations) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+        
+        if (report.order.deliveryConditions) {
+            doc.text("Condições de Entrega:", margin, y);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+            doc.text(report.order.deliveryConditions, margin + 35, y);
+            y += 5;
+        }
+
+        if (report.order.observations) {
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+            doc.text("Obs. Encomenda:", margin, y);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+            doc.text(report.order.observations, margin + 35, y);
+            y += 5;
+        }
+    }
+    y += 4;
+  }
 
   // --- 4. OBSERVATIONS & SUMMARY ---
   
@@ -240,64 +325,78 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
 
   // --- 5. SIGNATURES (Anchored Bottom) ---
   
-  // Calculate footer area height required (approx 45 units)
-  const footerHeight = 45;
-  let sigY = pageHeight - footerHeight - 10; // 10 padding from bottom edge
+  // Only draw signatures if NOT a commercial visit
+  if (report.typeKey !== 'visit_comercial') {
 
-  // If current content overlaps signature area, push signatures to next page
-  if (y > sigY) {
-    doc.addPage();
-    sigY = pageHeight - footerHeight - 10;
+    // Calculate footer area height required (approx 45 units)
+    const footerHeight = 45;
+    let sigY = pageHeight - footerHeight - 10; // 10 padding from bottom edge
+
+    // If current content overlaps signature area, push signatures to next page
+    if (y > sigY) {
+      doc.addPage();
+      sigY = pageHeight - footerHeight - 10;
+    }
+
+    // Draw light separator line
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, sigY, pageWidth - margin, sigY);
+    sigY += 5;
+
+    const sigBoxWidth = (contentWidth / 2) - 10;
+    const sigBoxHeight = 35;
+
+    // Auditor Signature Area
+    const aX = margin;
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+    doc.text(report.order ? "COMERCIAL" : "TÉCNICO RESPONSÁVEL", aX, sigY + 3);
+    
+    if (report.auditorSignature) {
+      doc.addImage(report.auditorSignature, 'PNG', aX, sigY + 5, 40, 18);
+    }
+    doc.setDrawColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+    doc.setLineWidth(0.1);
+    doc.line(aX, sigY + 25, aX + sigBoxWidth, sigY + 25); // Signature Line
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+    doc.text(report.auditorName, aX, sigY + 29);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+    doc.text("Assinado digitalmente", aX, sigY + 32);
+
+    // Client Signature Area
+    const cX = pageWidth - margin - sigBoxWidth;
+    doc.setFontSize(7);
+    doc.text("PELO CLIENTE", cX, sigY + 3);
+
+    if (report.clientSignature) {
+      doc.addImage(report.clientSignature, 'PNG', cX, sigY + 5, 40, 18);
+    }
+    doc.setDrawColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+    doc.line(cX, sigY + 25, cX + sigBoxWidth, sigY + 25); // Signature Line
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+    doc.text(report.clientSignerName, cX, sigY + 29);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+    doc.text("Validado no local", cX, sigY + 32);
+  } else {
+    // If commercial visit, maybe just add a small footer note or nothing
+    let noteY = pageHeight - 15;
+    if (y > noteY) {
+        doc.addPage();
+        noteY = pageHeight - 15;
+    }
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+    doc.text("Relatório de visita comercial (não carece de assinatura).", margin, noteY);
   }
-
-  // Draw light separator line
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, sigY, pageWidth - margin, sigY);
-  sigY += 5;
-
-  const sigBoxWidth = (contentWidth / 2) - 10;
-  const sigBoxHeight = 35;
-
-  // Auditor Signature Area
-  const aX = margin;
-  doc.setFontSize(7);
-  doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
-  doc.text("TÉCNICO RESPONSÁVEL", aX, sigY + 3);
-  
-  if (report.auditorSignature) {
-    doc.addImage(report.auditorSignature, 'PNG', aX, sigY + 5, 40, 18);
-  }
-  doc.setDrawColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
-  doc.setLineWidth(0.1);
-  doc.line(aX, sigY + 25, aX + sigBoxWidth, sigY + 25); // Signature Line
-  
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
-  doc.text(report.auditorName, aX, sigY + 29);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
-  doc.text("Assinado digitalmente", aX, sigY + 32);
-
-  // Client Signature Area
-  const cX = pageWidth - margin - sigBoxWidth;
-  doc.setFontSize(7);
-  doc.text("PELO CLIENTE", cX, sigY + 3);
-
-  if (report.clientSignature) {
-    doc.addImage(report.clientSignature, 'PNG', cX, sigY + 5, 40, 18);
-  }
-  doc.setDrawColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
-  doc.line(cX, sigY + 25, cX + sigBoxWidth, sigY + 25); // Signature Line
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
-  doc.text(report.clientSignerName, cX, sigY + 29);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6);
-  doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
-  doc.text("Validado no local", cX, sigY + 32);
 
   // --- 6. FOOTER (Page Numbers) ---
   const pageCount = (doc as any).internal.getNumberOfPages();
@@ -310,4 +409,156 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
   }
 
   return doc;
+};
+
+// Function to generate ONLY the Order PDF
+export const generateOrderPDF = (report: Report, client: Client, company: CompanySettings) => {
+    if (!report.order) return generatePDF(report, client, company); // Fallback
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 14;
+    const contentWidth = pageWidth - (margin * 2);
+
+    let y = 15;
+
+    // --- Header (Similar to main report but specific title) ---
+    if (company.logoUrl) {
+        try {
+          doc.addImage(company.logoUrl, 'PNG', margin, 10, 25, 25);
+        } catch (e) {
+          console.warn("Logo error", e);
+        }
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(COLORS.PRIMARY[0], COLORS.PRIMARY[1], COLORS.PRIMARY[2]);
+    doc.text(company.name, pageWidth - margin, y, { align: 'right' });
+    y += 5;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+    doc.text(company.address, pageWidth - margin, y, { align: 'right' });
+    y += 4;
+    doc.text(`NIF: ${company.nif} | ${company.phone}`, pageWidth - margin, y, { align: 'right' });
+    
+    // Document Title Bar
+    y = 42;
+    doc.setFillColor(COLORS.PRIMARY[0], COLORS.PRIMARY[1], COLORS.PRIMARY[2]);
+    doc.rect(margin, y, contentWidth, 10, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text("NOTA DE ENCOMENDA", margin + 4, y + 6.5);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Ref: ${report.id.replace('r-', 'enc-')} | Data: ${report.date}`, pageWidth - margin - 4, y + 6.5, { align: 'right' });
+
+    // Client Info
+    y += 15;
+    
+    // Commercial Name Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+    doc.text(`Comercial: ${report.auditorName}`, margin, y);
+    
+    y += 10;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(COLORS.PRIMARY[0], COLORS.PRIMARY[1], COLORS.PRIMARY[2]);
+    doc.text("DADOS DO CLIENTE", margin, y);
+    y += 5;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
+    doc.text(client.name, margin, y);
+    y += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(`${client.address}, ${client.postalCode} ${client.locality}`, margin, y);
+    y += 4;
+    doc.text(`NIF: ${client.nif || 'N/A'}`, margin, y);
+    y += 4;
+    doc.text(`Contacto: ${client.contactPerson} (${client.phone})`, margin, y);
+
+    y += 10;
+
+    // Order Table
+    const orderData = report.order.items.map(item => [
+        item.productName,
+        item.quantity.toString(),
+        `${item.unitPrice.toFixed(2)}€`,
+        `${item.discount}%`,
+        `${item.total.toFixed(2)}€`
+    ]);
+
+    autoTable(doc, {
+        startY: y,
+        head: [['Produto / Serviço', 'Qtd', 'Preço Unit.', 'Desc.', 'Total']],
+        body: orderData,
+        theme: 'striped',
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: COLORS.PRIMARY },
+        columnStyles: {
+            0: { cellWidth: 'auto' },
+            1: { cellWidth: 15, halign: 'center' },
+            2: { cellWidth: 25, halign: 'right' },
+            3: { cellWidth: 15, halign: 'center' },
+            4: { cellWidth: 25, halign: 'right', fontStyle: 'bold' }
+        },
+        margin: { left: margin, right: margin }
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 5;
+
+    // Total and Conditions
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text(`Valor Total: ${report.order.totalValue.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+    y += 15;
+
+    if (report.order.deliveryConditions) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text("Condições de Entrega:", margin, y);
+        y += 4;
+        doc.setFont('helvetica', 'normal');
+        doc.text(report.order.deliveryConditions, margin, y);
+        y += 8;
+    }
+
+    if (report.order.observations) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text("Observações:", margin, y);
+        y += 4;
+        doc.setFont('helvetica', 'normal');
+        doc.text(report.order.observations, margin, y);
+        y += 8;
+    }
+
+    // Signatures
+    const sigY = pageHeight - 40;
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, sigY, margin + 60, sigY);
+    doc.line(pageWidth - margin - 60, sigY, pageWidth - margin, sigY);
+
+    doc.setFontSize(8);
+    // Explicitly showing Commercial Name under signature line
+    doc.text("O Comercial", margin, sigY + 5);
+    doc.setFont('helvetica', 'bold');
+    doc.text(report.auditorName, margin, sigY + 10);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.text("O Cliente", pageWidth - margin - 60, sigY + 5);
+
+    return doc;
 };
