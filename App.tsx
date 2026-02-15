@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   FileText, 
@@ -29,11 +29,12 @@ import {
   AlertTriangle,
   ShoppingCart
 } from 'lucide-react';
-import { MOCK_USERS, MOCK_CLIENTS, MOCK_REPORTS, REPORT_TEMPLATES, DEFAULT_COMPANY_SETTINGS } from './constants';
+import { REPORT_TEMPLATES, DEFAULT_COMPANY_SETTINGS, MOCK_USERS, MOCK_CLIENTS, MOCK_REPORTS } from './constants';
 import { User, Client, Report, UserRole, ReportTypeKey, CompanySettings } from './types';
 import ReportForm from './components/ReportForm';
 import LoginScreen from './components/LoginScreen';
 import { generatePDF, generateOrderPDF } from './services/pdfService';
+import { api } from './services/api';
 
 enum Screen {
   DASHBOARD = 'Dashboard',
@@ -47,11 +48,12 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.DASHBOARD);
   
-  // Data State
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
-  const [reports, setReports] = useState<Report[]>(MOCK_REPORTS);
+  // Data State - Initialize empty, load from API
+  const [users, setUsers] = useState<User[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Client Management State
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -73,6 +75,59 @@ const App: React.FC = () => {
   // Report Edit/View State
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [viewingReport, setViewingReport] = useState<Report | null>(null);
+
+  // --- API LOADING ---
+  const loadData = async () => {
+      setIsLoading(true);
+      try {
+          // Fetch all data in parallel
+          const [fetchedUsers, fetchedClients, fetchedReports, fetchedSettings] = await Promise.all([
+              api.getUsers(),
+              api.getClients(),
+              api.getReports(),
+              api.getSettings()
+          ]);
+
+          // Hydrate Reports with Client/Auditor names (since SQL returns IDs)
+          const hydratedReports = fetchedReports.map(r => {
+              const client = fetchedClients.find(c => c.id === r.clientId);
+              const auditor = fetchedUsers.find(u => u.id === r.auditorId);
+              const template = Object.values(REPORT_TEMPLATES).find(t => t.key === r.typeKey);
+              
+              return {
+                  ...r,
+                  clientName: client ? client.name : 'Cliente Desconhecido',
+                  clientShopName: client?.shopName,
+                  auditorName: auditor ? auditor.name : 'Auditor Desconhecido',
+                  typeName: template ? template.label : r.typeKey
+              };
+          });
+
+          // Fallback if API returns empty/error (e.g. first run) use Constants, otherwise use API data
+          // NOTE: For Production, remove the OR || fallback to force DB usage
+          setUsers(fetchedUsers.length > 0 ? fetchedUsers : MOCK_USERS); 
+          setClients(fetchedClients.length > 0 ? fetchedClients : MOCK_CLIENTS);
+          // If reports are empty but users/clients loaded, it might just be empty DB.
+          // Only fallback if EVERYTHING failed (users empty)
+          setReports(fetchedUsers.length > 0 ? hydratedReports : MOCK_REPORTS);
+          
+          if (fetchedSettings) setCompanySettings(fetchedSettings);
+
+      } catch (error) {
+          console.error("Error loading data", error);
+          // Fallback to mocks so app doesn't crash on dev without PHP
+          setUsers(MOCK_USERS);
+          setClients(MOCK_CLIENTS);
+          setReports(MOCK_REPORTS);
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
+  useEffect(() => {
+      loadData();
+  }, []);
+
 
   // --- Derived State & Access Control ---
   
@@ -96,7 +151,7 @@ const App: React.FC = () => {
   // Filter Reports based on Role (Only see reports for clients you have access to)
   const availableReports = reports.filter(r => {
       const client = clients.find(c => c.id === r.clientId);
-      if (!client) return false;
+      if (!client) return false; // Or show if deleted?
       if (!currentUser) return false;
       
       if (currentUser.role === UserRole.ADMIN) return true;
@@ -141,7 +196,7 @@ const App: React.FC = () => {
 
   // --- Actions: Clients ---
 
-  const handleSaveClient = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveClient = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
@@ -168,22 +223,30 @@ const App: React.FC = () => {
       accountManagerId: editingClient?.accountManagerId || (currentUser?.role === UserRole.COMERCIAL ? currentUser.id : undefined)
     };
 
+    // Update Local State Optimistically
     if (editingClient) {
       setClients(clients.map(c => c.id === clientData.id ? clientData : c));
     } else {
       setClients([...clients, clientData]);
     }
+    
+    // Save to API
+    await api.saveClient(clientData);
+
     setIsClientModalOpen(false);
     setEditingClient(null);
   };
 
-  const handleDeleteClient = (id: string) => {
+  const handleDeleteClient = async (id: string) => {
     if (currentUser?.role !== UserRole.ADMIN) {
       alert("Apenas administradores podem apagar clientes.");
       return;
     }
     if (confirm('Tem a certeza que deseja remover este cliente?')) {
+      // Optimistic Update
       setClients(clients.filter(c => c.id !== id));
+      // API Call
+      await api.deleteClient(id);
     }
   };
 
@@ -237,12 +300,18 @@ const App: React.FC = () => {
     } else {
       setUsers([...users, userData]);
     }
+
+    await api.saveUser(userData);
+
     setIsUserModalOpen(false);
     setEditingUser(null);
   };
 
-  const handleDeleteUser = (id: string) => {
-    if (confirm('Tem a certeza?')) setUsers(users.filter(u => u.id !== id));
+  const handleDeleteUser = async (id: string) => {
+    if (confirm('Tem a certeza?')) {
+        setUsers(users.filter(u => u.id !== id));
+        await api.deleteUser(id);
+    }
   };
 
   // --- Actions: Reports ---
@@ -281,7 +350,7 @@ const App: React.FC = () => {
     setEditingReport(null);
   };
 
-  const handleSaveReport = (report: Report) => {
+  const handleSaveReport = async (report: Report) => {
     // Check if updating or creating
     const exists = reports.some(r => r.id === report.id);
     
@@ -289,8 +358,16 @@ const App: React.FC = () => {
       setReports(reports.map(r => r.id === report.id ? report : r));
     } else {
       setReports([report, ...reports]);
-      setClients(clients.map(c => c.id === report.clientId ? { ...c, lastVisit: report.date } : c));
+      // Update client last visit
+      const updatedClient = clients.find(c => c.id === report.clientId);
+      if(updatedClient) {
+          const newClientData = { ...updatedClient, lastVisit: report.date };
+          setClients(clients.map(c => c.id === report.clientId ? newClientData : c));
+          await api.saveClient(newClientData); // Async save client update
+      }
     }
+
+    await api.saveReport(report); // Async save report
 
     setSelectedTemplateKey(null);
     setSelectedClientForReport(null);
@@ -323,10 +400,11 @@ const App: React.FC = () => {
     alert("O cliente de email foi aberto. O PDF foi descarregado para que o possa anexar manualmente.");
   };
 
-  const handleDeleteReport = (id: string) => {
+  const handleDeleteReport = async (id: string) => {
     if (currentUser?.role !== UserRole.ADMIN) return;
     if (confirm("Deseja apagar este relatório permanentemente?")) {
       setReports(reports.filter(r => r.id !== id));
+      await api.deleteReport(id);
     }
   };
 
@@ -353,7 +431,7 @@ const App: React.FC = () => {
        });
     }
 
-    setCompanySettings({
+    const newSettings = {
       name: formData.get('name') as string,
       nif: formData.get('nif') as string,
       address: formData.get('address') as string,
@@ -363,12 +441,27 @@ const App: React.FC = () => {
       phone: formData.get('phone') as string,
       website: formData.get('website') as string,
       logoUrl: logoUrl
-    });
+    };
+
+    setCompanySettings(newSettings);
+    await api.saveSettings(newSettings);
     alert("Definições da empresa atualizadas.");
   };
 
 
   // --- Render ---
+
+  // Loading Screen
+  if (isLoading) {
+      return (
+          <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+              <div className="text-center">
+                  <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-gray-600 font-medium">A carregar dados...</p>
+              </div>
+          </div>
+      );
+  }
 
   if (!currentUser) {
     return <LoginScreen users={users} onLogin={handleLogin} />;
