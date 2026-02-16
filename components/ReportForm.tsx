@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Report, Client, User, AuditCriteria, ReportTemplate, CompanySettings, OrderItem } from '../types';
 import SignaturePad from './SignaturePad';
 import { generatePDF, generateOrderPDF } from '../services/pdfService';
-import { Save, CheckCircle, AlertCircle, MinusCircle, FileText, Download, Mail, MapPin, X, ShoppingCart, Plus, Trash2 } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, MinusCircle, FileText, Download, Mail, MapPin, X, ShoppingCart, Plus, Trash2, ExternalLink } from 'lucide-react';
 
 interface ReportFormProps {
   client: Client;
@@ -278,10 +278,23 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
               </div>
               <div>
                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">GPS</label>
-                 <div className="w-full p-2 bg-white text-gray-500 border border-gray-300 rounded-lg flex items-center gap-2 truncate disabled:opacity-60 disabled:bg-gray-100">
-                    <MapPin size={16} />
-                    <span className="text-xs">{gpsCoords ? 'Capturado' : 'Pendente'}</span>
-                 </div>
+                 {gpsCoords ? (
+                    <button 
+                      type="button"
+                      onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${gpsCoords.lat},${gpsCoords.lng}`, '_blank')}
+                      className="w-full p-2 bg-green-50 text-green-700 border border-green-200 rounded-lg flex items-center gap-2 truncate hover:bg-green-100 transition-colors"
+                      title="Clique para ver no mapa"
+                    >
+                      <MapPin size={16} />
+                      <span className="text-xs font-medium">Ver Mapa</span>
+                      <ExternalLink size={12} className="opacity-50" />
+                    </button>
+                 ) : (
+                   <div className="w-full p-2 bg-gray-50 text-gray-400 border border-gray-200 rounded-lg flex items-center gap-2 truncate">
+                      <MapPin size={16} />
+                      <span className="text-xs">Não capturado</span>
+                   </div>
+                 )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
