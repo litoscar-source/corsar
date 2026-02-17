@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { Report, CompanySettings, Client } from '../types';
 
 // Constants for styling
-const COLORS = {
+const COLORS: { [key: string]: [number, number, number] } = {
   PRIMARY: [30, 58, 138], // Blue-900
   SECONDARY: [100, 116, 139], // Slate-500
   ACCENT: [241, 245, 249], // Slate-100 (Backgrounds)
@@ -14,6 +14,7 @@ const COLORS = {
 };
 
 export const generatePDF = (report: Report, client: Client, company: CompanySettings) => {
+  // Ensure jsPDF constructor works (ESM compatibility)
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
@@ -292,7 +293,6 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
   // --- 4. OBSERVATIONS & SUMMARY ---
   
   // Check space for observations. If minimal space left, add page.
-  // We need roughly 40-50 units for summary + 50 units for signatures.
   if (pageHeight - y < 90) {
     doc.addPage();
     y = 20;
@@ -353,7 +353,9 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
     doc.text(report.order ? "COMERCIAL" : "TÉCNICO RESPONSÁVEL", aX, sigY + 3);
     
     if (report.auditorSignature) {
-      doc.addImage(report.auditorSignature, 'PNG', aX, sigY + 5, 40, 18);
+      try {
+        doc.addImage(report.auditorSignature, 'PNG', aX, sigY + 5, 40, 18);
+      } catch(e) { console.warn("Auditor signature error", e); }
     }
     doc.setDrawColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
     doc.setLineWidth(0.1);
@@ -373,7 +375,9 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
     doc.text("PELO CLIENTE", cX, sigY + 3);
 
     if (report.clientSignature) {
-      doc.addImage(report.clientSignature, 'PNG', cX, sigY + 5, 40, 18);
+      try {
+        doc.addImage(report.clientSignature, 'PNG', cX, sigY + 5, 40, 18);
+      } catch(e) { console.warn("Client signature error", e); }
     }
     doc.setDrawColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
     doc.line(cX, sigY + 25, cX + sigBoxWidth, sigY + 25); // Signature Line
@@ -506,7 +510,10 @@ export const generateOrderPDF = (report: Report, client: Client, company: Compan
         body: orderData,
         theme: 'striped',
         styles: { fontSize: 8 },
-        headStyles: { fillColor: COLORS.PRIMARY },
+        headStyles: { 
+            fillColor: COLORS.PRIMARY, 
+            textColor: [255, 255, 255] 
+        },
         columnStyles: {
             0: { cellWidth: 'auto' },
             1: { cellWidth: 15, halign: 'center' },
