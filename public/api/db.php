@@ -1,9 +1,9 @@
 <?php
 // Configurações da Base de Dados (Hostinger Local)
 $host = 'localhost'; 
-$db_name = 'NOME_DA_BASE_DE_DADOS'; // Ex: u123456789_auditpro
-$username = 'USUARIO_DA_BASE_DE_DADOS'; // Ex: u123456789_admin
-$password = 'SENHA_DA_BASE_DE_DADOS';
+$db_name = 'u721003715_corsar'; // Ex: u123456789_auditpro
+$username = 'u721003715_corsarldaadmin'; // Ex: u123456789_admin
+$password = '|Xe?ob@~h4';
 
 // Headers CORS e Content-Type
 header("Access-Control-Allow-Origin: *");
