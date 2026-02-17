@@ -240,10 +240,10 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
 
       const orderData = report.order.items.map(item => [
           item.productName,
-          item.quantity.toString(),
-          `${item.unitPrice.toFixed(2)}€`,
+          String(item.quantity),
+          `${Number(item.unitPrice).toFixed(2)}€`,
           `${item.discount}%`,
-          `${item.total.toFixed(2)}€`
+          `${Number(item.total).toFixed(2)}€`
       ]);
 
       (doc as any).autoTable({
@@ -540,10 +540,10 @@ export const generateOrderPDF = (report: Report, client: Client, company: Compan
       // Order Table
       const orderData = report.order.items.map(item => [
           item.productName,
-          item.quantity.toString(),
-          `${item.unitPrice.toFixed(2)}€`,
+          String(item.quantity),
+          `${Number(item.unitPrice).toFixed(2)}€`,
           `${item.discount}%`,
-          `${item.total.toFixed(2)}€`
+          `${Number(item.total).toFixed(2)}€`
       ]);
 
       (doc as any).autoTable({

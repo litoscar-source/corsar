@@ -88,14 +88,21 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   const updateOrderItem = (id: string, field: keyof OrderItem, value: any) => {
       const updatedItems = orderItems.map(item => {
           if (item.id === id) {
-              const updated = { ...item, [field]: value };
-              // Recalculate line total
-              if (field === 'quantity' || field === 'unitPrice' || field === 'discount') {
-                  const qty = field === 'quantity' ? Number(value) : item.quantity;
-                  const price = field === 'unitPrice' ? Number(value) : item.unitPrice;
-                  const disc = field === 'discount' ? Number(value) : item.discount;
-                  updated.total = (qty * price) * (1 - disc / 100);
+              // Ensure numeric fields are actually numbers
+              let finalValue = value;
+              if (['quantity', 'unitPrice', 'discount'].includes(field)) {
+                  finalValue = value === '' ? 0 : parseFloat(value);
               }
+              
+              const updated = { ...item, [field]: finalValue };
+              
+              // Recalculate line total using valid numbers
+              const qty = Number(updated.quantity);
+              const price = Number(updated.unitPrice);
+              const disc = Number(updated.discount);
+              
+              updated.total = (qty * price) * (1 - disc / 100);
+              
               return updated;
           }
           return item;
