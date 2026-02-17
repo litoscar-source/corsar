@@ -1,3 +1,4 @@
+
 export enum UserRole {
   ADMIN = 'Administrador',
   COMERCIAL = 'Comercial',
@@ -5,7 +6,7 @@ export enum UserRole {
   TECNICO = 'Técnico'
 }
 
-export type ReportTypeKey = 'visit_comercial' | 'audit_pool' | 'audit_haccp' | 'maint_prev' | 'safety_check' | 'pest_control' | 'intervention_general';
+export type ReportTypeKey = 'visit_comercial' | 'audit_pool' | 'audit_haccp' | 'maint_prev' | 'safety_check' | 'pest_control' | 'intervention_general' | 'audit_continente';
 
 export interface User {
   id: string;
@@ -55,9 +56,9 @@ export interface ReportTemplate {
 export interface OrderItem {
   id: string;
   productName: string;
-  quantity: number;
-  unitPrice: number;
-  discount: number; // Percentage
+  quantity: number | string; // Changed to allow empty strings in form
+  unitPrice: number | string; // Changed to allow empty strings in form
+  discount: number | string; // Changed to allow empty strings in form
   total: number;
 }
 

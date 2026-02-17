@@ -1,7 +1,7 @@
 import { User, UserRole, Client, Report, AuditCriteria, ReportTemplate, ReportTypeKey, CompanySettings } from './types';
 
 // Red Drop Logo (SVG converted to Base64)
-const RED_DROP_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAACXBIWXMAAAsTAAALEwEAmpwYAAAFE0lEQVR4nO2aS2xcVRSGv3PfmXbm0U6btjSplIdCRdXGjQ0SEQ2IDStWQGILDSwQS2UBiQUSQxFCAiHWbJAoTEBFgqgCRV1UiJBCkRCDRFRJ00ye0/HMeBzfunMzk5kkE9vjTJyRre+453z/d8+95/4zYwxFiiiijCg87Q40Qj0HkXoOIvUcROo5iNRzEKn/O4i0t7e3TU1N/Vyv19+r1+sH6/X6m319ffsWFhbeu3z58k/N/r7RjI6O7t2zZ8/XQ0NDx/r6+o6Uy+VdAMYYVlZWqK6u0t3d/V1nZ+eXAwMDL8/Ozn574sSJX5r1nZYQ1/f9F0ql0otDQ0Mv7dy5c4/v+wAIIQAQQsQ/B4DrupTL5Z/27Nnz8tjY2EszMzNfNwszLSG1Wu2DvXv3vnjgwIHdQogYxBjj/xYj3/d37d279+WpqamPGo2GUxTS3t7eNjEx8fzIyMhL5XJ5F/F1sZ14oVDoLBQKpVKpdHpkZOQl3/efX1lZ+bopQZqGjI6O7t27d++3Q0NDxwDI5/MMDAzQ1dVFoVDo9DzvWKlUemVkZOSlixcvfnp937k+pL29vW1iYuK5gYGBFwF6e3t5+eWXefrpp3n66acBODgwMPCi7/vP34y9awu5fvB9/4WhoaHjAF1dXRw/fpzTp0/T1dXV8Z/v+y8MDe38bHZ29tsbBbkmpFqtHuzr6ztSLpd3AfT29vLWW29x/PhxCoUCAH19fUeGhoZempmZ+bIpwVqCjI6O7t2zZ8/XQoiY0N7ezltvvRXDFAoFhBA7h4aGjrmu+3KzY7UlpFwu7+rr6zsSj8z09DTHjx/n9OnTdHV1AfT19R3ZtWvX4QsXLvzYjFAtQarV6sH+/v7340J88cUXHD9+nNOnT8cwQ0NDx3zff35mZua7ZgRpClEqlV7s7u7+BsB1XQ4fPsxbb71FoVCAeJTu7u5vBgYGXpybm/u+WbFagriu+1K5XN4F4Hkehw8fjuEKhQJCyJjQ29v7za5du56fm5v7uRnBmkJ833+hVCq9GAvR1dXF22+/zcTEBAcPHozhCoXCS8Vi8bnZ2dlvmhWsJcT1ff+FYrH4fC6Xiwnt7e289dZbHD9+nPZ4lOYLhUJn3/efX1lZ+bopwZpCqtXqwV27dh0G8DyPo0ePcvz4cQ4ePAjQ8Z/jOM/7vv/89evXf2xKsJYgY2Nj+33ffz6Xy8WE3t5e3nrrLU6fPk1PTw9ApVLZ5fv+C9euXfuhGeFaQorF4nPd3d3fAHiH4fDhwxw/fpyuri6Anp6eI67rvlStVn9uRriWkEql0ul53rF8Ph8TeHp6euL7oVDo9DzvWKlUenF1dfX7ZgRrcaRQKJRKpdLpeJTu7u6Y0IEDB3bVavXgwsLCj80I1hSkv7//23w+HxN6enri+6FQ6CwajZ9u3LhxuhmhWoK4rrtTLpd3xYQAeJ7H0aNHY0L5fB7Xde+s1Wq/NiNUSxAhRBedmEKhQKFQwHVdQOzhdF33TjPCtQQxxtCNu278N8aY677fTpx/i5D/c4h+G/w/Qoyh67p3Go3GT80+v9m/7B3Xda9Vq9Wfm31+s4vRdV3q9fp7zT6/Kcj169d/rFarP9/0s2uEeg4i9RxE6jmI1HMQqe9b5F+BvFqQk7X9OwAAAABJRU5ErkJggg==";
+const RED_DROP_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAACXBIWXMAAAsTAAALEwEAmpwYAAAFE0lEQVR4nO2aS2xcVRSGv3PfmXbm0U6btjSplIdCRdXGjQ0SEQ2IDStWQGILDSwQS2UBiQUSQxFCAiHWbJAoTEBFgqgCRV1UiJBCkRCDRFRJ00ye0/HMeBzfunMzk5kkE9vjTJyRre+453z/d8+95/4zYwxFiiiijCg87Q40Qj0HkXoOIvUcROo5iNRzEKn/O4i0t7e3TU1N/Vyv19+r1+sH6/X6m319ffsWFhbeu3z58k/N/r7RjI6O7t2zZ8/XQ0NDx/r6+o6Uy+VdAMYYVlZWqK6u0t3d/V1nZ+eXAwMDL8/Ozn574sSJX5r1nZYQ1/f9F0ql0otDQ0Mv7dy5c4/v+wAIIQAQQsQ/B4DrupTL5Z/27Nnz8tjY2EszMzNfNwszLSG1Wu2DvXv3vnjgwIHdQogYxBjj/xYj3/d37d279+WpqamPGo2GUxTS3t7eNjEx8fzIyMhL5XJ5F/F1sZ14oVDoLBQKpVKpdHpkZOQl3/efX1lZ+bopQZqGjI6O7t2zZ8/XQ0NDx3zff35mZua7ZgRpClEqlV7s7u7+BsB1XQ4fPsxbb71FoVCAeJTu7u5vBgYGXpybm/u+WbFagriu+1K5XN4F4Hkehw8fjuEKhQJCyJjQ29v7za5du56fm5v7uRnBmkJ833+hVCq9GAvR1dXF22+/zcTEBAcPHozhCoXCS8Vi8bnZ2dlvmhWsJcT1ff+FYrH4fC6Xiwnt7e289dZbHD9+nPZ4lOYLhUJn3/efX1lZ+bopQZpCqtXqwV27dh0G8DyPo0ePcvz4cQ4ePAjQ8Z/jOM/7vv/89evXf2xKsJYgY2Nj+33ffz6Xy8WE3t5e3nrrLU6fPk1PTw9ApVLZ5fv+C9euXfuhGeFaQorF4nPd3d3fAHiH4fDhwxw/fpyuri6Anp6eI67rvlStVn9uRriWkEql0ul53rF8Ph8TeHp6euL7oVDo9DzvWKlUenF1dfX7ZgRrcaRQKJRKpdLpeJTu7u6Y0IEDB3bVavXgwsLCj80I1hSkv7//23w+HxN6enri+6FQ6CwajZ9u3LhxuhmhWoK4rrtTLpd3xYQAeJ7H0aNHY0L5fB7Xde+s1Wq/NiNUSxAhRBedmEKhQKFQwHVdQOzhdF33TjPCtQQxxtCNu278N8aY677fTpx/i5D/c4h+G/w/Qoyh67p3Go3GT80+v9m/7B3Xda9Vq9Wfm31+s4vRdV3q9fp7zT6/Kcj169d/rFarP9/0s2uEeg4i9RxE6jmI1HMQqe9b5F+BvFqQk7X9OwAAAABJRU5ErkJggg==";
 
 export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   name: 'AuditPro Solutions, Lda',
@@ -88,42 +88,29 @@ export const REPORT_TEMPLATES: Record<ReportTypeKey, ReportTemplate> = {
     key: 'pest_control',
     label: '6. Relatório de Intervenção (Pragas)',
     defaultCriteria: [
-      // VISITA TYPE
       { label: 'TIPO DE VISITA: Rotina' },
       { label: 'TIPO DE VISITA: Reclamação' },
       { label: 'TIPO DE VISITA: Consolidação' },
       { label: 'TIPO DE VISITA: Inspeção' },
-      
-      // TARGETS
       { label: 'ALVO: Controlo de Roedores' },
       { label: 'ALVO: Controlo de Rastejantes' },
       { label: 'ALVO: Controlo de Insetos Voadores' },
       { label: 'ALVO: Controlo de Aves Urbanas' },
-      
-      // RODENT CONTROL DETAILS
-      { label: 'ROEDORES: Engodo Totalmente Consumido (Indicar estações nas obs)' },
-      { label: 'ROEDORES: Engodo Parcialmente Consumido (Indicar estações nas obs)' },
+      { label: 'ROEDORES: Engodo Totalmente Consumido' },
+      { label: 'ROEDORES: Engodo Parcialmente Consumido' },
       { label: 'ROEDORES: Subs. Elementos de Motorização' },
       { label: 'ROEDORES: Subs. Engodo em todos os postos' },
-      
-      // BIOCIDES (RODENTS)
       { label: 'BIOCIDA (Roedores): Talon' },
       { label: 'BIOCIDA (Roedores): Bromadol Isco' },
       { label: 'BIOCIDA (Roedores): Vabitox Facum' },
-      
-      // CRAWLING INSECTS DETAILS
       { label: 'RASTEJANTES: Biocida Solfac 50 EW' },
       { label: 'RASTEJANTES: Biocida Agita 10 WG' },
       { label: 'RASTEJANTES: Biocida K-Othrine SC 25' },
       { label: 'RASTEJANTES: Instalador de Insecto-Caçador' },
       { label: 'RASTEJANTES: Substituição de Placas' },
-      
-      // BIRDS
       { label: 'AVES: Sistema de Captura' },
       { label: 'AVES: Pino Dissuador' },
       { label: 'AVES: Rede Contra Aves' },
-      
-      // RECOMMENDATIONS / STATUS
       { label: 'Estações deslocadas sem consentimento' },
       { label: 'Entrega das Fichas de Segurança Biocidas' },
       { label: 'Entrega pelo cliente da planta do local' },
@@ -138,7 +125,51 @@ export const REPORT_TEMPLATES: Record<ReportTypeKey, ReportTemplate> = {
   'intervention_general': {
     key: 'intervention_general',
     label: '7. Relatório de Intervenção (Geral)',
-    defaultCriteria: [] // Intentionally empty for free text report
+    defaultCriteria: []
+  },
+  'audit_continente': {
+    key: 'audit_continente',
+    label: '8. Auditoria Continente',
+    defaultCriteria: [
+        // ATENDIMENTO
+        { label: 'ATENDIMENTO: Tem Lavatório' },
+        { label: 'ATENDIMENTO: Doseador p/ Dermal' },
+        { label: 'ATENDIMENTO: Produto é o indicado' },
+        { label: 'ATENDIMENTO: Estado do doseador' },
+        { label: 'ATENDIMENTO: Doseador p/ Alfa-5' },
+        { label: 'ATENDIMENTO: Doseador c/ produto' },
+        { label: 'ATENDIMENTO: Estado do doseador (Alfa-5)' },
+        
+        // LABORATÓRIO
+        { label: 'LABORATÓRIO: Tem Lavatório' },
+        { label: 'LABORATÓRIO: Doseador p/ Dermal' },
+        { label: 'LABORATÓRIO: Produto é o indicado' },
+        { label: 'LABORATÓRIO: Estado do doseador' },
+        { label: 'LABORATÓRIO: Doseador p/ Utensílios' },
+        { label: 'LABORATÓRIO: Doseador c/ produto' },
+        { label: 'LABORATÓRIO: Produto é o indicado (Utensílios)' },
+        { label: 'LABORATÓRIO: Estado do doseador (Utensílios)' },
+
+        // DIVERSOS
+        { label: 'DIVERSOS: Esterilizador está limpo' },
+        { label: 'DIVERSOS: Utensílios estão limpos' },
+        { label: 'DIVERSOS: Fornos limpos' },
+        { label: 'DIVERSOS: Filtros/exaustão limpos' },
+        { label: 'DIVERSOS: Tabuleiros limpos' },
+
+        // DOSEADORES (Generalizado)
+        { label: 'DOSEADORES: Quantidade correta' },
+        { label: 'DOSEADORES: Estado do doseador' },
+        { label: 'DOSEADORES: Estado da mangueira' },
+        { label: 'DOSEADORES: Estado da lança / Punho' },
+
+        // ARMAZÉM
+        { label: 'ARMAZÉM: Espaço fechado e reservado' },
+        { label: 'ARMAZÉM: Produtos separados por grupos' },
+        { label: 'ARMAZÉM: Rótulos visíveis' },
+        { label: 'ARMAZÉM: Embalagens acondicionadas/fechadas' },
+        { label: 'ARMAZÉM: Consumo FIFO' }
+    ]
   }
 };
 
@@ -149,13 +180,13 @@ export const MOCK_USERS: User[] = [
     id: 'u1', name: 'Ana Silva', role: UserRole.ADMIN, 
     avatar: 'https://picsum.photos/id/64/100/100',
     pin: '123456',
-    allowedTemplates: ['visit_comercial', 'audit_pool', 'audit_haccp', 'maint_prev', 'safety_check', 'pest_control', 'intervention_general'] 
+    allowedTemplates: ['visit_comercial', 'audit_pool', 'audit_haccp', 'maint_prev', 'safety_check', 'pest_control', 'intervention_general', 'audit_continente'] 
   },
   { 
     id: 'u2', name: 'Carlos Santos', role: UserRole.AUDITOR, 
     avatar: 'https://picsum.photos/id/91/100/100',
     pin: '111111',
-    allowedTemplates: ['audit_pool', 'audit_haccp', 'safety_check', 'pest_control', 'intervention_general']
+    allowedTemplates: ['audit_pool', 'audit_haccp', 'safety_check', 'pest_control', 'intervention_general', 'audit_continente']
   },
   { 
     id: 'u3', name: 'Bruno Dias', role: UserRole.COMERCIAL, 

@@ -3,13 +3,22 @@ import { Client, Report, User, CompanySettings } from '../types';
 // Detect if we are in development (localhost) or production (Hostinger)
 const API_BASE = '/api'; 
 
-// Helper to handle fetch and JSON parsing safely
+// Helper to handle fetch and JSON parsing safely with TIMEOUT
 const safeFetch = async <T>(url: string, options?: RequestInit): Promise<T | null> => {
+    const controller = new AbortController();
+    // Timeout logic: If API takes more than 2 seconds, abort and return null (use mocks)
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
     try {
-        const res = await fetch(`${API_BASE}${url}`, options);
+        const res = await fetch(`${API_BASE}${url}`, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
         if (!res.ok) {
             // If 404 or 500, we just return null to fallback to mocks
-            console.warn(`API Error ${res.status} for ${url}`);
+            // console.warn(`API Error ${res.status} for ${url}`);
             return null;
         }
         
@@ -24,7 +33,10 @@ const safeFetch = async <T>(url: string, options?: RequestInit): Promise<T | nul
 
         return JSON.parse(text) as T;
     } catch (e) {
-        console.warn(`API Exception for ${url}:`, e);
+        // AbortError means timeout
+        if ((e as Error).name !== 'AbortError') {
+             console.warn(`API Exception for ${url}:`, e);
+        }
         return null;
     }
 };

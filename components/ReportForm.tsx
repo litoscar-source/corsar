@@ -84,8 +84,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
           id: `item-${Date.now()}`,
           productName: '',
           quantity: 1,
-          unitPrice: 0,
-          discount: 0,
+          unitPrice: '', // Initialize as empty string to avoid sticky 0
+          discount: '', // Initialize as empty string to avoid sticky 0
           total: 0
       };
       setOrderItems([...orderItems, newItem]);
@@ -94,15 +94,12 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   const updateOrderItem = (id: string, field: keyof OrderItem, value: any) => {
       const updatedItems = orderItems.map(item => {
           if (item.id === id) {
-              // Ensure numeric fields are actually numbers
+              // Ensure numeric fields allow string for better UX (no sticky zero)
               let finalValue = value;
-              if (['quantity', 'unitPrice', 'discount'].includes(field)) {
-                  finalValue = value === '' ? 0 : parseFloat(value);
-              }
               
               const updated = { ...item, [field]: finalValue };
               
-              // Recalculate line total using valid numbers
+              // Recalculate line total using valid numbers (converting empty strings to 0 for calc)
               const qty = Number(updated.quantity);
               const price = Number(updated.unitPrice);
               const disc = Number(updated.discount);
