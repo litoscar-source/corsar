@@ -9,13 +9,14 @@ interface ReportFormProps {
   auditor: User;
   template: ReportTemplate;
   companySettings: CompanySettings;
+  existingReports?: Report[]; // Added to calculate sequential ID
   onSave: (report: Report) => void;
   onCancel: () => void;
   initialReport?: Report; // Added for editing
   readOnly?: boolean; // New prop for viewing mode
 }
 
-const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, companySettings, onSave, onCancel, initialReport, readOnly = false }) => {
+const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, companySettings, existingReports = [], onSave, onCancel, initialReport, readOnly = false }) => {
   const [date, setDate] = useState(initialReport?.date || new Date().toISOString().split('T')[0]);
   const [startTime, setStartTime] = useState(initialReport?.startTime || new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }));
   const [endTime, setEndTime] = useState(initialReport?.endTime || new Date(Date.now() + 3600000).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }));
@@ -62,6 +63,11 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   const isCommercialVisit = template.key === 'visit_comercial';
   const hasCriteria = criteria.length > 0;
   const isGeneralIntervention = template.key === 'intervention_general';
+
+  // VAT Calculations
+  const vatRate = 0.23;
+  const vatAmount = orderTotal * vatRate;
+  const grandTotal = orderTotal + vatAmount;
 
   const handleCriteriaStatusChange = (id: string, status: AuditCriteria['status']) => {
     if (readOnly) return;
@@ -114,6 +120,30 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
       setOrderItems(orderItems.filter(i => i.id !== id));
   };
 
+  const generateReportId = () => {
+    if (initialReport) return initialReport.id;
+
+    const currentYear = new Date().getFullYear();
+    // Filter reports for the current year
+    const yearReports = existingReports.filter(r => r.id.startsWith(`${currentYear}-`));
+    
+    // Find the max sequence number
+    let maxSeq = 0;
+    yearReports.forEach(r => {
+        const parts = r.id.split('-');
+        if (parts.length === 2) {
+            const seq = parseInt(parts[1], 10);
+            if (!isNaN(seq) && seq > maxSeq) {
+                maxSeq = seq;
+            }
+        }
+    });
+
+    const nextSeq = maxSeq + 1;
+    // Format: YYYY-NNN (e.g., 2024-001)
+    return `${currentYear}-${String(nextSeq).padStart(3, '0')}`;
+  };
+
   const handleFinish = async (action: 'save' | 'pdf' | 'email' | 'order_pdf') => {
     // Basic validation only if saving
     if (action === 'save') {
@@ -150,7 +180,7 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
 
     // Construct data object
     const reportData: Report = {
-      id: initialReport?.id || `r-${Date.now()}`,
+      id: initialReport?.id || generateReportId(),
       clientId: client.id,
       clientName: client.name,
       clientShopName: client.shopName,
@@ -185,19 +215,19 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
       const doc = generatePDF(reportData, client, companySettings);
       
       if (action === 'pdf') {
-        doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}_${date}.pdf`);
+        doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}_${reportData.id}.pdf`);
       } else {
         const subject = encodeURIComponent(`Relatório de Intervenção - ${client.name}`);
         const body = encodeURIComponent(`Segue em anexo o relatório da intervenção realizada dia ${date}.\n\nCumprimentos,\n${companySettings.name}`);
         window.open(`mailto:${client.email}?subject=${subject}&body=${body}`);
-        doc.save(`Relatorio_${client.name}_${date}.pdf`); 
+        doc.save(`Relatorio_${client.name}_${reportData.id}.pdf`); 
         alert("O cliente de email foi aberto.");
       }
     }
 
     if (action === 'order_pdf') {
         const doc = generateOrderPDF(reportData, client, companySettings);
-        doc.save(`Encomenda_${client.name.replace(/\s+/g, '_')}_${date}.pdf`);
+        doc.save(`Encomenda_${client.name.replace(/\s+/g, '_')}_${reportData.id}.pdf`);
     }
 
     if (action === 'save') {
@@ -492,8 +522,18 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                             </tbody>
                             <tfoot className="bg-gray-50 font-bold">
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-3 text-right text-gray-700">Valor Total:</td>
-                                    <td className="px-4 py-3 text-right text-emerald-700 text-lg">{orderTotal.toFixed(2)}€</td>
+                                    <td colSpan={4} className="px-4 py-2 text-right text-gray-600 text-sm">Subtotal:</td>
+                                    <td className="px-4 py-2 text-right text-gray-700">{orderTotal.toFixed(2)}€</td>
+                                    {!readOnly && <td></td>}
+                                </tr>
+                                <tr>
+                                    <td colSpan={4} className="px-4 py-2 text-right text-gray-600 text-sm">IVA (23%):</td>
+                                    <td className="px-4 py-2 text-right text-gray-700">{vatAmount.toFixed(2)}€</td>
+                                    {!readOnly && <td></td>}
+                                </tr>
+                                <tr className="bg-emerald-50 border-t border-emerald-100">
+                                    <td colSpan={4} className="px-4 py-3 text-right text-emerald-900 font-bold">Total Final (c/ IVA):</td>
+                                    <td className="px-4 py-3 text-right text-emerald-700 text-lg font-bold">{grandTotal.toFixed(2)}€</td>
                                     {!readOnly && <td></td>}
                                 </tr>
                             </tfoot>

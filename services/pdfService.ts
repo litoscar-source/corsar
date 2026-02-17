@@ -107,11 +107,13 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text("RELATÓRIO DE INTERVENÇÃO TÉCNICA", margin + 4, y + 6.5);
+    // Dynamic Report Title
+    doc.text(report.typeName.toUpperCase(), margin + 4, y + 6.5);
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text(`Nº ${report.id.replace('r-', '')} | Data: ${report.date}`, pageWidth - margin - 4, y + 6.5, { align: 'right' });
+    // Use full ID (without stripping 'r-')
+    doc.text(`Nº ${report.id} | Data: ${report.date}`, pageWidth - margin - 4, y + 6.5, { align: 'right' });
 
     // --- 2. INFO GRID (Client & Intervention) ---
     y += 15;
@@ -277,11 +279,30 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
 
       y = (doc as any).lastAutoTable.finalY + 4;
 
-      // Total Value
+      // VAT Calculations
+      const subtotal = report.order.totalValue;
+      const vatRate = 0.23;
+      const vatAmount = subtotal * vatRate;
+      const grandTotal = subtotal + vatAmount;
+
+      // Total Value Block
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
+      
+      doc.text(`Subtotal:`, pageWidth - margin - 35, y, { align: 'right' });
+      doc.text(`${subtotal.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+      y += 5;
+      
+      doc.text(`IVA (23%):`, pageWidth - margin - 35, y, { align: 'right' });
+      doc.text(`${vatAmount.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+      y += 5;
+
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       doc.setTextColor(COLORS.PRIMARY[0], COLORS.PRIMARY[1], COLORS.PRIMARY[2]);
-      doc.text(`Valor Total: ${report.order.totalValue.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+      doc.text(`Total Final:`, pageWidth - margin - 35, y, { align: 'right' });
+      doc.text(`${grandTotal.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
       y += 8;
 
       // Delivery Conditions & Obs
@@ -503,6 +524,7 @@ export const generateOrderPDF = (report: Report, client: Client, company: Compan
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
+      // Use full ID here too
       doc.text(`Ref: ${report.id.replace('r-', 'enc-')} | Data: ${report.date}`, pageWidth - margin - 4, y + 6.5, { align: 'right' });
 
       // Client Info
@@ -568,10 +590,28 @@ export const generateOrderPDF = (report: Report, client: Client, company: Compan
 
       y = (doc as any).lastAutoTable.finalY + 5;
 
-      // Total and Conditions
+      // VAT Calculations
+      const subtotal = report.order.totalValue;
+      const vatRate = 0.23;
+      const vatAmount = subtotal * vatRate;
+      const grandTotal = subtotal + vatAmount;
+
+      // Total and Conditions Block
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      
+      doc.text(`Subtotal:`, pageWidth - margin - 40, y, { align: 'right' });
+      doc.text(`${subtotal.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+      y += 6;
+
+      doc.text(`IVA (23%):`, pageWidth - margin - 40, y, { align: 'right' });
+      doc.text(`${vatAmount.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+      y += 6;
+
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text(`Valor Total: ${report.order.totalValue.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
+      doc.text(`Total Final:`, pageWidth - margin - 40, y, { align: 'right' });
+      doc.text(`${grandTotal.toFixed(2)}€`, pageWidth - margin, y, { align: 'right' });
       y += 15;
 
       if (report.order.deliveryConditions) {

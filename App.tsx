@@ -475,6 +475,7 @@ const App: React.FC = () => {
         auditor={currentUser} 
         template={REPORT_TEMPLATES[selectedTemplateKey]}
         companySettings={companySettings}
+        existingReports={reports}
         onSave={handleSaveReport}
         onCancel={() => {
           setSelectedTemplateKey(null);
@@ -743,6 +744,7 @@ const App: React.FC = () => {
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
+                        <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">ID</th>
                         <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
                         <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Data</th>
                         <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Auditor</th>
@@ -752,6 +754,9 @@ const App: React.FC = () => {
                     <tbody className="divide-y divide-gray-100">
                       {availableReports.map(report => (
                         <tr key={report.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 text-xs font-mono text-gray-500">
+                            {report.id.replace('r-', '')}
+                          </td>
                           <td className="px-6 py-4">
                              <p className="font-medium text-gray-900">{report.clientName}</p>
                              <p className="text-xs text-gray-500">{report.typeName}</p>
