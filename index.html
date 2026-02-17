@@ -9,6 +9,12 @@
     
     <!-- PDF Libraries Loaded Globally for Reliability -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Shim to make jsPDF available globally for the autotable plugin -->
+    <script>
+      if (window.jspdf) {
+        window.jsPDF = window.jspdf.jsPDF;
+      }
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
     <style>
