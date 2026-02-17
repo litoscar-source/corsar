@@ -1,8 +1,8 @@
 <?php
-// Configurações da Base de Dados - PREENCHA AQUI NA HOSTINGER
-$host = 'localhost';
-$db_name = 'NOME_DA_BASE_DE_DADOS';
-$username = 'USUARIO_DA_BASE_DE_DADOS';
+// Configurações da Base de Dados (Hostinger Local)
+$host = 'localhost'; 
+$db_name = 'NOME_DA_BASE_DE_DADOS'; // Ex: u123456789_auditpro
+$username = 'USUARIO_DA_BASE_DE_DADOS'; // Ex: u123456789_admin
 $password = 'SENHA_DA_BASE_DE_DADOS';
 
 // Headers CORS e Content-Type
@@ -17,9 +17,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 try {
-    $conn = new PDO("mysql:host=" . $host . ";dbname=" . $db_name . ";charset=utf8mb4", $username, $password);
+    $dsn = "mysql:host=" . $host . ";dbname=" . $db_name . ";charset=utf8mb4";
+    $conn = new PDO($dsn, $username, $password);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch(PDOException $exception) {
+    http_response_code(500);
     echo json_encode(["error" => "Connection error: " . $exception->getMessage()]);
     exit();
 }
