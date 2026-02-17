@@ -1,6 +1,11 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { Report, CompanySettings, Client } from '../types';
+
+// Declare globals for the script tags loaded in index.html
+declare global {
+  interface Window {
+    jspdf: any;
+  }
+}
 
 // Constants for styling
 const COLORS: { [key: string]: [number, number, number] } = {
@@ -14,8 +19,15 @@ const COLORS: { [key: string]: [number, number, number] } = {
 };
 
 export const generatePDF = (report: Report, client: Client, company: CompanySettings) => {
-  // Ensure jsPDF constructor works (ESM compatibility)
+  // Access jsPDF from the global window object (loaded via script tag)
+  if (!window.jspdf) {
+    alert("Erro: Biblioteca PDF não carregada. Verifique a sua ligação à internet.");
+    throw new Error("jsPDF not loaded");
+  }
+
+  const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
+  
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
   const margin = 14;
@@ -162,7 +174,8 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
       c.notes || ''
     ]);
 
-    autoTable(doc, {
+    // Use method attached to prototype by script tag
+    (doc as any).autoTable({
       startY: y,
       head: [['CRITÉRIO AVALIADO', 'ESTADO', 'OBSERVAÇÕES TÉCNICAS']],
       body: tableData,
@@ -186,7 +199,7 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
         1: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
         2: { cellWidth: 'auto' }
       },
-      didParseCell: function(data) {
+      didParseCell: function(data: any) {
         // Color coding for Status
         if (data.section === 'body' && data.column.index === 1) {
           const text = data.cell.text[0];
@@ -225,7 +238,7 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
         `${item.total.toFixed(2)}€`
     ]);
 
-    autoTable(doc, {
+    (doc as any).autoTable({
         startY: y,
         head: [['Produto / Serviço', 'Qtd', 'Preço Unit.', 'Desc.', 'Total']],
         body: orderData,
@@ -417,8 +430,15 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
 
 // Function to generate ONLY the Order PDF
 export const generateOrderPDF = (report: Report, client: Client, company: CompanySettings) => {
+    // Access jsPDF from the global window object (loaded via script tag)
+    if (!window.jspdf) {
+        alert("Erro: Biblioteca PDF não carregada. Verifique a sua ligação à internet.");
+        throw new Error("jsPDF not loaded");
+    }
+
     if (!report.order) return generatePDF(report, client, company); // Fallback
 
+    const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
@@ -504,7 +524,7 @@ export const generateOrderPDF = (report: Report, client: Client, company: Compan
         `${item.total.toFixed(2)}€`
     ]);
 
-    autoTable(doc, {
+    (doc as any).autoTable({
         startY: y,
         head: [['Produto / Serviço', 'Qtd', 'Preço Unit.', 'Desc.', 'Total']],
         body: orderData,
