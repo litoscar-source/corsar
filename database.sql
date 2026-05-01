@@ -84,12 +84,23 @@ CREATE TABLE `company_settings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
+-- Tabela `templates` (Modelos de Relatório Personalizados)
+--
+CREATE TABLE `templates` (
+  `key` varchar(100) NOT NULL,
+  `label` varchar(150) NOT NULL,
+  `criteria_json` json NOT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
 -- Índices e Chaves Primárias
 --
 ALTER TABLE `users` ADD PRIMARY KEY (`id`);
 ALTER TABLE `clients` ADD PRIMARY KEY (`id`);
 ALTER TABLE `reports` ADD PRIMARY KEY (`id`);
 ALTER TABLE `company_settings` ADD PRIMARY KEY (`id`);
+ALTER TABLE `templates` ADD PRIMARY KEY (`key`);
 
 --
 -- Inserir Dados Iniciais (Opcional - Exemplo)

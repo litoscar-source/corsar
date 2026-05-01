@@ -1,4 +1,4 @@
-import { Client, Report, User, CompanySettings } from '../types';
+import { Client, Report, User, CompanySettings, ReportTemplate } from '../types';
 
 // Detect if we are in development (localhost) or production (Hostinger)
 const API_BASE = '/api'; 
@@ -96,5 +96,20 @@ export const api = {
             method: 'POST',
             body: JSON.stringify(settings)
         });
+    },
+
+    // --- TEMPLATES (NEW) ---
+    getTemplates: async (): Promise<ReportTemplate[]> => {
+        const data = await safeFetch<ReportTemplate[]>('/templates.php');
+        return data || [];
+    },
+    saveTemplate: async (template: ReportTemplate) => {
+        await safeFetch('/templates.php', {
+            method: 'POST',
+            body: JSON.stringify(template)
+        });
+    },
+    deleteTemplate: async (key: string) => {
+        await safeFetch(`/templates.php?key=${key}`, { method: 'DELETE' });
     }
 };

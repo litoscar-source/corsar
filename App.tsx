@@ -27,10 +27,14 @@ import {
   Camera,
   Eye,
   AlertTriangle,
-  ShoppingCart
+  ShoppingCart,
+  List,
+  FilePlus,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { REPORT_TEMPLATES, DEFAULT_COMPANY_SETTINGS, MOCK_USERS, MOCK_CLIENTS, MOCK_REPORTS } from './constants';
-import { User, Client, Report, UserRole, ReportTypeKey, CompanySettings } from './types';
+import { User, Client, Report, UserRole, ReportTypeKey, CompanySettings, ReportTemplate } from './types';
 import ReportForm from './components/ReportForm';
 import LoginScreen from './components/LoginScreen';
 import { generatePDF, generateOrderPDF } from './services/pdfService';
@@ -48,11 +52,16 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.DASHBOARD);
   
-  // Data State - Initialize empty, load from API
+  // Data State
   const [users, setUsers] = useState<User[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [companySettings, setCompanySettings] = useState<CompanySettings>(DEFAULT_COMPANY_SETTINGS);
+  
+  // Dynamic Templates State
+  const [customTemplates, setCustomTemplates] = useState<ReportTemplate[]>([]);
+  const [allTemplatesMap, setAllTemplatesMap] = useState<Record<string, ReportTemplate>>(REPORT_TEMPLATES);
+
   const [isLoading, setIsLoading] = useState(true);
   
   // Client Management State
@@ -66,6 +75,11 @@ const App: React.FC = () => {
   // User Management State (Settings)
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  // Template Management State (Settings)
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<ReportTemplate | null>(null);
+  const [templateQuestions, setTemplateQuestions] = useState<string[]>([]);
 
   // Report Workflow State
   const [selectedClientForReport, setSelectedClientForReport] = useState<Client | null>(null);
@@ -81,18 +95,29 @@ const App: React.FC = () => {
       setIsLoading(true);
       try {
           // Fetch all data in parallel
-          const [fetchedUsers, fetchedClients, fetchedReports, fetchedSettings] = await Promise.all([
+          const [fetchedUsers, fetchedClients, fetchedReports, fetchedSettings, fetchedTemplates] = await Promise.all([
               api.getUsers(),
               api.getClients(),
               api.getReports(),
-              api.getSettings()
+              api.getSettings(),
+              api.getTemplates()
           ]);
 
-          // Hydrate Reports with Client/Auditor names (since SQL returns IDs)
+          // Merge Default Templates with Custom Templates
+          const mergedTemplates = { ...REPORT_TEMPLATES };
+          if (fetchedTemplates && fetchedTemplates.length > 0) {
+              fetchedTemplates.forEach(t => {
+                  mergedTemplates[t.key] = t;
+              });
+              setCustomTemplates(fetchedTemplates);
+          }
+          setAllTemplatesMap(mergedTemplates);
+
+          // Hydrate Reports
           const hydratedReports = fetchedReports.map(r => {
               const client = fetchedClients.find(c => c.id === r.clientId);
               const auditor = fetchedUsers.find(u => u.id === r.auditorId);
-              const template = Object.values(REPORT_TEMPLATES).find(t => t.key === r.typeKey);
+              const template = mergedTemplates[r.typeKey];
               
               return {
                   ...r,
@@ -103,19 +128,15 @@ const App: React.FC = () => {
               };
           });
 
-          // Fallback if API returns empty/error (e.g. first run) use Constants, otherwise use API data
-          // NOTE: For Production, remove the OR || fallback to force DB usage
+          // Fallback if API returns empty/error
           setUsers(fetchedUsers.length > 0 ? fetchedUsers : MOCK_USERS); 
           setClients(fetchedClients.length > 0 ? fetchedClients : MOCK_CLIENTS);
-          // If reports are empty but users/clients loaded, it might just be empty DB.
-          // Only fallback if EVERYTHING failed (users empty)
           setReports(fetchedUsers.length > 0 ? hydratedReports : MOCK_REPORTS);
           
           if (fetchedSettings) setCompanySettings(fetchedSettings);
 
       } catch (error) {
           console.error("Error loading data", error);
-          // Fallback to mocks so app doesn't crash on dev without PHP
           setUsers(MOCK_USERS);
           setClients(MOCK_CLIENTS);
           setReports(MOCK_REPORTS);
@@ -129,18 +150,16 @@ const App: React.FC = () => {
   }, []);
 
 
-  // --- Derived State & Access Control ---
-  
+  // --- Derived State ---
   const isAdmin = currentUser?.role === UserRole.ADMIN;
 
-  // Filter Clients based on Role
   const availableClients = clients.filter(c => {
     if (!currentUser) return false;
     if (currentUser.role === UserRole.ADMIN) return true;
     if (currentUser.role === UserRole.COMERCIAL) {
         return c.accountManagerId === currentUser.id;
     }
-    return true; // Auditors/Technicians usually see all or route based, keeping open for now
+    return true; 
   });
 
   const filteredClients = availableClients.filter(c => 
@@ -148,10 +167,9 @@ const App: React.FC = () => {
     (c.nif && c.nif.includes(clientSearch))
   );
 
-  // Filter Reports based on Role (Only see reports for clients you have access to)
   const availableReports = reports.filter(r => {
       const client = clients.find(c => c.id === r.clientId);
-      if (!client) return false; // Or show if deleted?
+      if (!client) return false;
       if (!currentUser) return false;
       
       if (currentUser.role === UserRole.ADMIN) return true;
@@ -169,12 +187,10 @@ const App: React.FC = () => {
   });
 
   const recentReports = availableReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-
-  // Order Calculations
+  
   const currentMonthOrders = currentMonthReports.filter(r => r.order);
   const currentMonthOrderValue = currentMonthOrders.reduce((acc, r) => acc + (r.order?.totalValue || 0), 0);
 
-  // Alert Calculations (Clients not visited) - Only calculated for display logic, but visibility controlled below
   const overdueClients = availableClients.filter(c => {
       if (!c.visitFrequency || !c.lastVisit || c.lastVisit === '-') return false;
       const last = new Date(c.lastVisit);
@@ -195,11 +211,9 @@ const App: React.FC = () => {
   };
 
   // --- Actions: Clients ---
-
   const handleSaveClient = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
     const clientData: Client = {
       id: editingClient ? editingClient.id : `c-${Date.now()}`,
       name: formData.get('name') as string,
@@ -208,31 +222,21 @@ const App: React.FC = () => {
       contactPerson: formData.get('contactPerson') as string,
       email: formData.get('email') as string,
       phone: formData.get('phone') as string,
-      
       address: formData.get('address') as string,
       postalCode: formData.get('postalCode') as string,
       locality: formData.get('locality') as string,
       county: formData.get('county') as string,
-      
       visitFrequency: Number(formData.get('visitFrequency')) || undefined,
-
       status: 'Ativo',
       lastVisit: editingClient?.lastVisit || '-',
-      
-      // If creating as commercial, auto-assign. If admin, could add selector (skipping for brevity)
       accountManagerId: editingClient?.accountManagerId || (currentUser?.role === UserRole.COMERCIAL ? currentUser.id : undefined)
     };
-
-    // Update Local State Optimistically
     if (editingClient) {
       setClients(clients.map(c => c.id === clientData.id ? clientData : c));
     } else {
       setClients([...clients, clientData]);
     }
-    
-    // Save to API
     await api.saveClient(clientData);
-
     setIsClientModalOpen(false);
     setEditingClient(null);
   };
@@ -243,9 +247,7 @@ const App: React.FC = () => {
       return;
     }
     if (confirm('Tem a certeza que deseja remover este cliente?')) {
-      // Optimistic Update
       setClients(clients.filter(c => c.id !== id));
-      // API Call
       await api.deleteClient(id);
     }
   };
@@ -265,15 +267,11 @@ const App: React.FC = () => {
   };
 
   // --- Actions: Users ---
-
   const handleSaveUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
-    // Handle File Upload
     const fileInput = (e.currentTarget.elements.namedItem('avatarFile') as HTMLInputElement);
     let avatarUrl = editingUser?.avatar || `https://ui-avatars.com/api/?name=${formData.get('name')}&background=random`;
-
     if (fileInput.files && fileInput.files[0]) {
        const file = fileInput.files[0];
        avatarUrl = await new Promise((resolve) => {
@@ -282,10 +280,7 @@ const App: React.FC = () => {
           reader.readAsDataURL(file);
        });
     }
-
-    // Get Allowed Templates (Permissions)
     const allowedTemplates = formData.getAll('allowedTemplates') as ReportTypeKey[];
-    
     const userData: User = {
       id: editingUser ? editingUser.id : `u-${Date.now()}`,
       name: formData.get('name') as string,
@@ -294,15 +289,12 @@ const App: React.FC = () => {
       avatar: avatarUrl,
       allowedTemplates: allowedTemplates.length > 0 ? allowedTemplates : [] 
     };
-
     if (editingUser) {
       setUsers(users.map(u => u.id === userData.id ? userData : u));
     } else {
       setUsers([...users, userData]);
     }
-
     await api.saveUser(userData);
-
     setIsUserModalOpen(false);
     setEditingUser(null);
   };
@@ -314,11 +306,80 @@ const App: React.FC = () => {
     }
   };
 
+  // --- Actions: Templates (Reports) ---
+  const openAddTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateQuestions(['']); // Start with one empty question
+    setIsTemplateModalOpen(true);
+  };
+
+  const openEditTemplate = (template: ReportTemplate) => {
+    setEditingTemplate(template);
+    setTemplateQuestions(template.defaultCriteria.map(c => c.label));
+    setIsTemplateModalOpen(true);
+  };
+
+  const handleSaveTemplate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    // Clean up empty questions
+    const criteria = templateQuestions
+        .filter(q => q.trim().length > 0)
+        .map(q => ({ label: q }));
+
+    if (criteria.length === 0) {
+        alert("O relatório deve ter pelo menos uma pergunta.");
+        return;
+    }
+
+    const templateName = formData.get('label') as string;
+    
+    // Generate simple slug for key if new
+    const templateKey = editingTemplate 
+        ? editingTemplate.key 
+        : `custom_${Date.now()}_${templateName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+
+    const newTemplate: ReportTemplate = {
+        key: templateKey,
+        label: templateName,
+        defaultCriteria: criteria,
+        isCustom: true
+    };
+
+    // Optimistic Update
+    const updatedCustoms = editingTemplate 
+        ? customTemplates.map(t => t.key === newTemplate.key ? newTemplate : t)
+        : [...customTemplates, newTemplate];
+    
+    setCustomTemplates(updatedCustoms);
+    setAllTemplatesMap({ ...allTemplatesMap, [newTemplate.key]: newTemplate });
+
+    // API Call
+    await api.saveTemplate(newTemplate);
+
+    setIsTemplateModalOpen(false);
+  };
+
+  const handleDeleteTemplate = async (key: string) => {
+      if(confirm("Tem a certeza que deseja apagar este modelo de relatório? Os relatórios antigos criados com este modelo não serão afetados, mas não poderá criar novos.")) {
+          const updatedCustoms = customTemplates.filter(t => t.key !== key);
+          setCustomTemplates(updatedCustoms);
+          
+          const newMap = { ...allTemplatesMap };
+          delete newMap[key];
+          setAllTemplatesMap(newMap);
+
+          await api.deleteTemplate(key);
+      }
+  };
+
+
   // --- Actions: Reports ---
 
   const initReportCreation = (client: Client) => {
     setSelectedClientForReport(client);
-    setEditingReport(null); // Ensure we are not editing
+    setEditingReport(null);
     setViewingReport(null);
     setIsReportTypeModalOpen(true);
   };
@@ -329,7 +390,6 @@ const App: React.FC = () => {
   };
 
   const handleEditReport = (report: Report) => {
-    // Only Admin or the Author can edit (simplified to Admin for now based on prompt, but logical extension)
     if (currentUser?.role !== UserRole.ADMIN) return;
     const client = clients.find(c => c.id === report.clientId);
     if (!client) return;
@@ -351,23 +411,19 @@ const App: React.FC = () => {
   };
 
   const handleSaveReport = async (report: Report) => {
-    // Check if updating or creating
     const exists = reports.some(r => r.id === report.id);
-    
     if (exists) {
       setReports(reports.map(r => r.id === report.id ? report : r));
     } else {
       setReports([report, ...reports]);
-      // Update client last visit
       const updatedClient = clients.find(c => c.id === report.clientId);
       if(updatedClient) {
           const newClientData = { ...updatedClient, lastVisit: report.date };
           setClients(clients.map(c => c.id === report.clientId ? newClientData : c));
-          await api.saveClient(newClientData); // Async save client update
+          await api.saveClient(newClientData); 
       }
     }
-
-    await api.saveReport(report); // Async save report
+    await api.saveReport(report); 
 
     setSelectedTemplateKey(null);
     setSelectedClientForReport(null);
@@ -386,16 +442,10 @@ const App: React.FC = () => {
   const handleEmailReport = (report: Report) => {
     const client = clients.find(c => c.id === report.clientId);
     if (!client) return;
-
     const doc = generatePDF(report, client, companySettings);
-    
-    // Simulate Email
     const subject = encodeURIComponent(`Relatório de Intervenção - ${client.name} - ${report.date}`);
     const body = encodeURIComponent(`Estimado(a) ${client.contactPerson},\n\nSegue em anexo o relatório da intervenção realizada dia ${report.date}.\n\nCumprimentos,\n${companySettings.name}`);
-    
-    // Open mailto
     window.open(`mailto:${client.email}?subject=${subject}&body=${body}`);
-    // Download PDF for attachment
     doc.save(`Relatorio_${client.name.replace(/\s+/g, '_')}_${report.date}.pdf`);
     alert("O cliente de email foi aberto. O PDF foi descarregado para que o possa anexar manualmente.");
   };
@@ -419,9 +469,7 @@ const App: React.FC = () => {
     
     const formData = new FormData(e.currentTarget);
     const fileInput = e.currentTarget.elements.namedItem('logoFile') as HTMLInputElement;
-    
     let logoUrl = companySettings.logoUrl;
-
     if (fileInput.files && fileInput.files[0]) {
        const file = fileInput.files[0];
        logoUrl = await new Promise((resolve) => {
@@ -430,7 +478,6 @@ const App: React.FC = () => {
           reader.readAsDataURL(file);
        });
     }
-
     const newSettings = {
       name: formData.get('name') as string,
       nif: formData.get('nif') as string,
@@ -442,16 +489,13 @@ const App: React.FC = () => {
       website: formData.get('website') as string,
       logoUrl: logoUrl
     };
-
     setCompanySettings(newSettings);
     await api.saveSettings(newSettings);
     alert("Definições da empresa atualizadas.");
   };
 
-
   // --- Render ---
 
-  // Loading Screen
   if (isLoading) {
       return (
           <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -467,13 +511,23 @@ const App: React.FC = () => {
     return <LoginScreen users={users} onLogin={handleLogin} />;
   }
 
-  // If creating, editing or viewing report
+  // Report Form View
   if (selectedClientForReport && selectedTemplateKey) {
+    // Ensure we pick from allTemplatesMap which contains both static and custom
+    const template = allTemplatesMap[selectedTemplateKey];
+    if (!template) {
+        // Fallback or Error
+        alert("Erro: Modelo de relatório não encontrado.");
+        setSelectedTemplateKey(null);
+        setSelectedClientForReport(null);
+        return null;
+    }
+
     return (
       <ReportForm 
         client={selectedClientForReport} 
         auditor={currentUser} 
-        template={REPORT_TEMPLATES[selectedTemplateKey]}
+        template={template}
         companySettings={companySettings}
         existingReports={reports}
         onSave={handleSaveReport}
@@ -550,34 +604,24 @@ const App: React.FC = () => {
           {/* Dashboard View */}
           {currentScreen === Screen.DASHBOARD && (
             <div className="space-y-6">
-               
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                
-                {/* Total Clients Card */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                   <p className="text-gray-500 text-sm">Meus Clientes</p>
                   <h3 className="text-3xl font-bold text-gray-800 mt-2">{availableClients.length}</h3>
                 </div>
-                
-                {/* Reports Month Card */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                   <p className="text-gray-500 text-sm">Relatórios (Mês)</p>
                   <h3 className="text-3xl font-bold text-blue-600 mt-2">{currentMonthReports.length}</h3>
                 </div>
-
-                {/* Orders Month Card (Commercial Focused) */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-gray-500 text-sm">Encomendas (Mês)</p>
                     <div className="flex items-end gap-2 mt-2">
                         <h3 className="text-3xl font-bold text-emerald-600">{currentMonthOrders.length}</h3>
-                        {/* Only Admin sees value */}
                         {isAdmin && (
                           <span className="text-sm text-gray-500 mb-1">({currentMonthOrderValue.toFixed(0)}€)</span>
                         )}
                     </div>
                 </div>
-
-                 {/* Alerts Card - ONLY ADMIN SEES ALERTS */}
                  {isAdmin && (
                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                       <p className="text-gray-500 text-sm">Alertas de Visita</p>
@@ -588,7 +632,6 @@ const App: React.FC = () => {
                  )}
               </div>
               
-              {/* ALERTS SECTION (Only Admin) */}
               {isAdmin && overdueClients.length > 0 && (
                   <div className="bg-red-50 border border-red-100 rounded-xl overflow-hidden">
                       <div className="p-4 border-b border-red-100 flex items-center gap-2">
@@ -818,6 +861,53 @@ const App: React.FC = () => {
           {currentScreen === Screen.SETTINGS && currentUser.role === UserRole.ADMIN && (
              <div className="space-y-8">
                
+               {/* Template Management (NEW) */}
+               <section>
+                 <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><List size={20}/> Gestão de Modelos de Relatório</h2>
+                    <button onClick={openAddTemplate} className="text-sm bg-blue-600 text-white px-3 py-2 rounded flex items-center gap-2 hover:bg-blue-700">
+                      <FilePlus size={16} /> Novo Modelo
+                    </button>
+                 </div>
+                 
+                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Nome do Relatório</th>
+                          <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Nº Perguntas</th>
+                          <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {/* Render System Templates First */}
+                        {(Object.values(allTemplatesMap) as ReportTemplate[]).map(tpl => (
+                          <tr key={tpl.key} className={tpl.isCustom ? "bg-white" : "bg-gray-50"}>
+                            <td className="px-6 py-4 font-medium text-gray-900 flex items-center gap-2">
+                                {tpl.label}
+                                {!tpl.isCustom && <span className="text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">Sistema</span>}
+                            </td>
+                            <td className="px-6 py-4 text-gray-600">{tpl.defaultCriteria.length}</td>
+                            <td className="px-6 py-4 text-right">
+                               {/* Only allow editing custom templates for now to avoid breaking system defaults logic */}
+                               {tpl.isCustom ? (
+                                   <>
+                                     <button onClick={() => openEditTemplate(tpl)} className="text-blue-600 mr-2 hover:underline">Editar</button>
+                                     <button onClick={() => handleDeleteTemplate(tpl.key)} className="text-red-600 hover:underline">Apagar</button>
+                                   </>
+                               ) : (
+                                   <span className="text-xs text-gray-400 italic">Padrão</span>
+                               )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                 </div>
+               </section>
+
+               <div className="border-t border-gray-200 my-6"></div>
+
                {/* Company Settings */}
                <section>
                  <h2 className="text-xl font-bold text-gray-800 mb-4">Dados da Empresa (Sede)</h2>
@@ -879,6 +969,8 @@ const App: React.FC = () => {
                  </form>
                </section>
 
+               <div className="border-t border-gray-200 my-6"></div>
+
                {/* User Management */}
                <section>
                  <div className="flex justify-between items-center mb-4">
@@ -923,6 +1015,81 @@ const App: React.FC = () => {
         </div>
 
         {/* --- MODALS --- */}
+
+        {/* Template Manager Modal */}
+        {isTemplateModalOpen && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-y-auto max-h-[90vh]">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-800">{editingTemplate ? 'Editar Modelo' : 'Novo Modelo de Relatório'}</h3>
+                <button onClick={() => setIsTemplateModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
+              </div>
+              <form onSubmit={handleSaveTemplate} className="p-6 space-y-4">
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Relatório</label>
+                  <input 
+                    name="label" 
+                    defaultValue={editingTemplate?.label} 
+                    required 
+                    placeholder="Ex: Auditoria Cozinha"
+                    className="w-full p-2 bg-white text-black border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-medium text-lg" 
+                  />
+                </div>
+
+                <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-medium text-gray-700">Perguntas (Checklist)</label>
+                        <button 
+                            type="button" 
+                            onClick={() => setTemplateQuestions([...templateQuestions, ''])}
+                            className="text-xs flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100"
+                        >
+                            <Plus size={14} /> Adicionar Pergunta
+                        </button>
+                    </div>
+                    
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+                        {templateQuestions.map((question, index) => (
+                            <div key={index} className="flex gap-2 items-center animate-in fade-in duration-200">
+                                <span className="text-xs text-gray-400 w-6 text-right">{index + 1}.</span>
+                                <input 
+                                    value={question}
+                                    onChange={(e) => {
+                                        const newQs = [...templateQuestions];
+                                        newQs[index] = e.target.value;
+                                        setTemplateQuestions(newQs);
+                                    }}
+                                    placeholder="Escreva a pergunta ou critério..."
+                                    className="flex-1 p-2 bg-white text-black border border-gray-300 rounded focus:border-blue-500 outline-none"
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => {
+                                        const newQs = templateQuestions.filter((_, i) => i !== index);
+                                        setTemplateQuestions(newQs);
+                                    }}
+                                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                    tabIndex={-1}
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))}
+                         {templateQuestions.length === 0 && (
+                             <p className="text-center text-sm text-gray-500 py-4 italic">Nenhuma pergunta definida. Adicione a primeira.</p>
+                         )}
+                    </div>
+                </div>
+
+                <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 mt-4">
+                  <button type="button" onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">Cancelar</button>
+                  <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Guardar Modelo</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Client Modal */}
         {isClientModalOpen && (
@@ -1028,7 +1195,7 @@ const App: React.FC = () => {
                 <div>
                    <label className="block text-sm font-medium text-gray-700 mb-2">Permissões de Relatórios</label>
                    <div className="border border-gray-300 rounded bg-gray-50 max-h-40 overflow-y-auto p-2 space-y-2">
-                      {Object.values(REPORT_TEMPLATES).map(tpl => (
+                      {(Object.values(allTemplatesMap) as ReportTemplate[]).map(tpl => (
                         <label key={tpl.key} className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors">
                           <input 
                             type="checkbox" 
@@ -1070,8 +1237,10 @@ const App: React.FC = () => {
                 <h3 className="text-xl font-bold text-gray-800">Selecione o Tipo de Relatório</h3>
                 <p className="text-sm text-gray-500">Cliente: {selectedClientForReport.name}</p>
               </div>
-              <div className="p-4 space-y-2">
-                {Object.values(REPORT_TEMPLATES).filter(tpl => currentUser?.allowedTemplates.includes(tpl.key)).map(tpl => (
+              <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+                {(Object.values(allTemplatesMap) as ReportTemplate[])
+                    .filter(tpl => currentUser?.allowedTemplates.includes(tpl.key))
+                    .map(tpl => (
                   <button 
                     key={tpl.key}
                     onClick={() => selectReportType(tpl.key)}

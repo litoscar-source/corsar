@@ -1,4 +1,3 @@
-
 export enum UserRole {
   ADMIN = 'Administrador',
   COMERCIAL = 'Comercial',
@@ -6,7 +5,7 @@ export enum UserRole {
   TECNICO = 'Técnico'
 }
 
-export type ReportTypeKey = 'visit_comercial' | 'audit_pool' | 'audit_haccp' | 'maint_prev' | 'safety_check' | 'pest_control' | 'intervention_general' | 'audit_continente';
+export type ReportTypeKey = string; // Changed to string to allow dynamic keys from DB
 
 export interface User {
   id: string;
@@ -51,6 +50,7 @@ export interface ReportTemplate {
   key: ReportTypeKey;
   label: string;
   defaultCriteria: { label: string }[];
+  isCustom?: boolean; // Flag to identify if it can be deleted
 }
 
 export interface OrderItem {
