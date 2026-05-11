@@ -55,6 +55,8 @@ export interface ReportTemplate {
 
 export interface OrderItem {
   id: string;
+  type: 'product' | 'service'; // new
+  unit: string; // new
   productName: string;
   quantity: number | string; // Changed to allow empty strings in form
   unitPrice: number | string; // Changed to allow empty strings in form
@@ -89,6 +91,9 @@ export interface Report {
   
   // Order Data (Optional - usually for Commercial Visits)
   order?: Order;
+  contactSpokenTo?: string;
+  contactPhone?: string;
+  contactEmail?: string;
 
   // Signatures
   auditorSignerName: string;

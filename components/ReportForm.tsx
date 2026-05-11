@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Report, Client, User, AuditCriteria, ReportTemplate, CompanySettings, OrderItem } from '../types';
 import SignaturePad from './SignaturePad';
 import { generatePDF, generateOrderPDF } from '../services/pdfService';
-import { Save, CheckCircle, AlertCircle, MinusCircle, FileText, Download, Mail, MapPin, X, ShoppingCart, Plus, Trash2, ExternalLink } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, MinusCircle, FileText, Download, Mail, MapPin, X, ShoppingCart, Plus, Trash2, ExternalLink, Users } from 'lucide-react';
 
 interface ReportFormProps {
   client: Client;
@@ -39,6 +39,11 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   const [summary, setSummary] = useState(initialReport?.summary || '');
   const [clientObservations, setClientObservations] = useState(initialReport?.clientObservations || '');
   
+  // Commercial Visit Contact State
+  const [contactSpokenTo, setContactSpokenTo] = useState(initialReport?.contactSpokenTo || '');
+  const [contactPhone, setContactPhone] = useState(initialReport?.contactPhone || '');
+  const [contactEmail, setContactEmail] = useState(initialReport?.contactEmail || '');
+
   // --- ORDER STATE ---
   const [orderItems, setOrderItems] = useState<OrderItem[]>(initialReport?.order?.items || []);
   const [orderDeliveryConditions, setOrderDeliveryConditions] = useState(initialReport?.order?.deliveryConditions || '');
@@ -79,9 +84,11 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
   };
 
   // --- Order Logic ---
-  const addOrderItem = () => {
+  const addOrderItem = (type: 'product' | 'service') => {
       const newItem: OrderItem = {
           id: `item-${Date.now()}`,
+          type,
+          unit: 'Un',
           productName: '',
           quantity: 1,
           unitPrice: '', // Initialize as empty string to avoid sticky 0
@@ -193,6 +200,9 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
       criteria,
       summary,
       clientObservations,
+      contactSpokenTo,
+      contactPhone,
+      contactEmail,
       auditorSignerName: auditorName,
       auditorSignature,
       clientSignerName: clientName,
@@ -434,9 +444,14 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                         <ShoppingCart size={20} className="text-emerald-600" /> Nova Encomenda
                     </h3>
                     {!readOnly && (
-                        <button onClick={addOrderItem} className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1 hover:bg-emerald-700">
-                            <Plus size={16} /> Adicionar Produto
-                        </button>
+                        <div className="flex gap-2">
+                            <button onClick={() => addOrderItem('product')} className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1 hover:bg-emerald-700">
+                                <Plus size={16} /> Adicionar Produto
+                            </button>
+                            <button onClick={() => addOrderItem('service')} className="bg-teal-600 text-white px-3 py-1 rounded-lg text-sm flex items-center gap-1 hover:bg-teal-700">
+                                <Plus size={16} /> Adicionar Serviço
+                            </button>
+                        </div>
                     )}
                   </div>
                   
@@ -445,7 +460,8 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                         <table className="w-full text-left">
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-1/3">Produto</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-1/3">Descrição</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-24">Unid.</th>
                                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-20">Qtd</th>
                                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-24">Preço (€)</th>
                                     <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-20">Desc.%</th>
@@ -454,7 +470,15 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {orderItems.map((item) => (
+                                {/* Produtos */}
+                                {orderItems.filter(i => i.type === 'product').length > 0 && (
+                                    <tr>
+                                        <td colSpan={!readOnly ? 7 : 6} className="bg-emerald-50 px-4 py-2 font-bold text-emerald-800 text-sm">
+                                            Produtos
+                                        </td>
+                                    </tr>
+                                )}
+                                {orderItems.filter(i => i.type === 'product').map((item) => (
                                     <tr key={item.id}>
                                         <td className="p-2">
                                             <input 
@@ -464,6 +488,20 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                                                 onChange={(e) => updateOrderItem(item.id, 'productName', e.target.value)}
                                                 disabled={readOnly}
                                             />
+                                        </td>
+                                        <td className="p-2">
+                                            <select
+                                                className="w-full p-2 border rounded bg-white text-gray-900"
+                                                value={item.unit}
+                                                onChange={(e) => updateOrderItem(item.id, 'unit', e.target.value)}
+                                                disabled={readOnly}
+                                            >
+                                                <option value="Un">Un.</option>
+                                                <option value="Cx">Cx</option>
+                                                <option value="Gr">Gr</option>
+                                                <option value="Kg">Kg</option>
+                                                <option value="L">L</option>
+                                            </select>
                                         </td>
                                         <td className="p-2">
                                             <input 
@@ -509,27 +547,104 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
                                         )}
                                     </tr>
                                 ))}
+                                
+                                {/* Serviços */}
+                                {orderItems.filter(i => i.type === 'service').length > 0 && (
+                                    <tr>
+                                        <td colSpan={!readOnly ? 7 : 6} className="bg-teal-50 px-4 py-2 font-bold text-teal-800 text-sm">
+                                            Serviços
+                                        </td>
+                                    </tr>
+                                )}
+                                {orderItems.filter(i => i.type === 'service').map((item) => (
+                                    <tr key={item.id}>
+                                        <td className="p-2">
+                                            <input 
+                                                className="w-full p-2 border rounded bg-white text-gray-900"
+                                                placeholder="Descrição do serviço"
+                                                value={item.productName}
+                                                onChange={(e) => updateOrderItem(item.id, 'productName', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            <select
+                                                className="w-full p-2 border rounded bg-white text-gray-900"
+                                                value={item.unit}
+                                                onChange={(e) => updateOrderItem(item.id, 'unit', e.target.value)}
+                                                disabled={readOnly}
+                                            >
+                                                <option value="Un">Un.</option>
+                                                <option value="Hr">Horas</option>
+                                                <option value="Dia">Dias</option>
+                                            </select>
+                                        </td>
+                                        <td className="p-2">
+                                            <input 
+                                                type="number"
+                                                min="1"
+                                                className="w-full p-2 border rounded bg-white text-gray-900 text-center"
+                                                value={item.quantity}
+                                                onChange={(e) => updateOrderItem(item.id, 'quantity', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                            <input 
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                className="w-full p-2 border rounded bg-white text-gray-900 text-right"
+                                                value={item.unitPrice}
+                                                onChange={(e) => updateOrderItem(item.id, 'unitPrice', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2">
+                                             <input 
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                className="w-full p-2 border rounded bg-white text-gray-900 text-center"
+                                                value={item.discount}
+                                                onChange={(e) => updateOrderItem(item.id, 'discount', e.target.value)}
+                                                disabled={readOnly}
+                                            />
+                                        </td>
+                                        <td className="p-2 text-right font-bold text-gray-800">
+                                            {item.total.toFixed(2)}€
+                                        </td>
+                                        {!readOnly && (
+                                            <td className="p-2 text-center">
+                                                <button onClick={() => removeOrderItem(item.id)} className="text-red-500 hover:text-red-700">
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                                
                                 {orderItems.length === 0 && (
                                     <tr>
-                                        <td colSpan={6} className="p-4 text-center text-gray-400 text-sm">
-                                            Nenhum produto adicionado à encomenda.
+                                        <td colSpan={!readOnly ? 7 : 6} className="p-4 text-center text-gray-400 text-sm">
+                                            Nenhum produto ou serviço adicionado.
                                         </td>
                                     </tr>
                                 )}
                             </tbody>
                             <tfoot className="bg-gray-50 font-bold">
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-2 text-right text-gray-600 text-sm">Subtotal:</td>
+                                    <td colSpan={!readOnly ? 5 : 4} className="px-4 py-2 text-right text-gray-600 text-sm">Subtotal:</td>
                                     <td className="px-4 py-2 text-right text-gray-700">{orderTotal.toFixed(2)}€</td>
                                     {!readOnly && <td></td>}
                                 </tr>
                                 <tr>
-                                    <td colSpan={4} className="px-4 py-2 text-right text-gray-600 text-sm">IVA (23%):</td>
+                                    <td colSpan={!readOnly ? 5 : 4} className="px-4 py-2 text-right text-gray-600 text-sm">IVA (23%):</td>
                                     <td className="px-4 py-2 text-right text-gray-700">{vatAmount.toFixed(2)}€</td>
                                     {!readOnly && <td></td>}
                                 </tr>
                                 <tr className="bg-emerald-50 border-t border-emerald-100">
-                                    <td colSpan={4} className="px-4 py-3 text-right text-emerald-900 font-bold">Total Final (c/ IVA):</td>
+                                    <td colSpan={!readOnly ? 5 : 4} className="px-4 py-3 text-right text-emerald-900 font-bold">Total Final (c/ IVA):</td>
                                     <td className="px-4 py-3 text-right text-emerald-700 text-lg font-bold">{grandTotal.toFixed(2)}€</td>
                                     {!readOnly && <td></td>}
                                 </tr>
@@ -576,6 +691,48 @@ const ReportForm: React.FC<ReportFormProps> = ({ client, auditor, template, comp
               className={`w-full p-4 bg-white text-black border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm ${isGeneralIntervention ? 'h-64' : 'h-32'} disabled:bg-gray-100 disabled:text-gray-700`}
             />
           </div>
+
+          {/* Commercial Visit - Contact Info */}
+          {isCommercialVisit && (
+            <div className="bg-blue-50 p-6 rounded-xl border border-blue-100 mb-6">
+              <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
+                 <Users size={20} /> Detalhes do Contacto
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 <div>
+                    <label className="block text-xs font-bold text-blue-800 uppercase mb-1">Com quem falou?</label>
+                    <input 
+                      value={contactSpokenTo}
+                      onChange={(e) => setContactSpokenTo(e.target.value)}
+                      disabled={readOnly}
+                      placeholder="Nome da pessoa"
+                      className="w-full p-2 border border-blue-200 rounded bg-white text-gray-900"
+                    />
+                 </div>
+                 <div>
+                    <label className="block text-xs font-bold text-blue-800 uppercase mb-1">Telefone / Telemóvel</label>
+                    <input 
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value)}
+                      disabled={readOnly}
+                      placeholder="Nº de contacto"
+                      className="w-full p-2 border border-blue-200 rounded bg-white text-gray-900"
+                    />
+                 </div>
+                 <div>
+                    <label className="block text-xs font-bold text-blue-800 uppercase mb-1">Email</label>
+                    <input 
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      disabled={readOnly}
+                      placeholder="Endereço de email"
+                      className="w-full p-2 border border-blue-200 rounded bg-white text-gray-900"
+                    />
+                 </div>
+              </div>
+            </div>
+          )}
 
           {/* Client Observations */}
           <div className="bg-amber-50 p-6 rounded-xl border border-amber-100">

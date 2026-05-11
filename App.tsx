@@ -68,6 +68,8 @@ const App: React.FC = () => {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch] = useState('');
+  const [clientAccountManagerFilter, setClientAccountManagerFilter] = useState<string>('');
+  const [clientLocalityFilter, setClientLocalityFilter] = useState<string>('');
   
   // Client History State
   const [viewingHistoryClient, setViewingHistoryClient] = useState<Client | null>(null);
@@ -85,6 +87,7 @@ const App: React.FC = () => {
   const [selectedClientForReport, setSelectedClientForReport] = useState<Client | null>(null);
   const [isReportTypeModalOpen, setIsReportTypeModalOpen] = useState(false);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<ReportTypeKey | null>(null);
+  const [reportSearch, setReportSearch] = useState('');
   
   // Report Edit/View State
   const [editingReport, setEditingReport] = useState<Report | null>(null);
@@ -162,10 +165,15 @@ const App: React.FC = () => {
     return true; 
   });
 
-  const filteredClients = availableClients.filter(c => 
-    c.name.toLowerCase().includes(clientSearch.toLowerCase()) || 
-    (c.nif && c.nif.includes(clientSearch))
-  );
+  const uniqueLocalities = Array.from(new Set(availableClients.map(c => c.locality).filter(Boolean))).sort();
+
+  const filteredClients = availableClients.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(clientSearch.toLowerCase()) || 
+                          (c.nif && c.nif.includes(clientSearch));
+    const matchesManager = clientAccountManagerFilter === '' || c.accountManagerId === clientAccountManagerFilter;
+    const matchesLocality = clientLocalityFilter === '' || c.locality === clientLocalityFilter;
+    return matchesSearch && matchesManager && matchesLocality;
+  });
 
   const availableReports = reports.filter(r => {
       const client = clients.find(c => c.id === r.clientId);
@@ -184,6 +192,13 @@ const App: React.FC = () => {
     const rDate = new Date(r.date);
     const now = new Date();
     return rDate.getMonth() === now.getMonth() && rDate.getFullYear() === now.getFullYear();
+  });
+
+  const filteredReports = availableReports.filter(r => {
+    const searchLower = reportSearch.toLowerCase();
+    return r.clientName.toLowerCase().includes(searchLower) || 
+           r.id.toLowerCase().includes(searchLower) ||
+           r.typeName.toLowerCase().includes(searchLower);
   });
 
   const recentReports = availableReports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
@@ -703,7 +718,29 @@ const App: React.FC = () => {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">Gestão de Clientes</h2>
-                <div className="flex gap-3 w-full md:w-auto">
+                <div className="flex gap-3 w-full md:w-auto flex-wrap">
+                  <select 
+                    value={clientLocalityFilter}
+                    onChange={(e) => setClientLocalityFilter(e.target.value)}
+                    className="px-3 py-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="">Localização (Todas)</option>
+                    {uniqueLocalities.map(loc => (
+                      <option key={loc} value={loc}>{loc}</option>
+                    ))}
+                  </select>
+                  {isAdmin && (
+                    <select 
+                      value={clientAccountManagerFilter}
+                      onChange={(e) => setClientAccountManagerFilter(e.target.value)}
+                      className="px-3 py-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="">Todos os Gestores</option>
+                      {users.filter(u => u.role === UserRole.COMERCIAL).map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  )}
                   <div className="relative flex-1 md:w-64">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                     <input 
@@ -781,7 +818,19 @@ const App: React.FC = () => {
           {/* Reports View */}
           {currentScreen === Screen.REPORTS && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold text-gray-800">Histórico de Relatórios</h2>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <h2 className="text-2xl font-bold text-gray-800">Histórico de Relatórios</h2>
+                <div className="relative w-full md:w-64">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <input 
+                    type="text" 
+                    value={reportSearch}
+                    onChange={(e) => setReportSearch(e.target.value)}
+                    placeholder="Pesquisar relatório..." 
+                    className="pl-10 pr-4 py-2 bg-white text-black border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full"
+                  />
+                </div>
+              </div>
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
@@ -795,7 +844,7 @@ const App: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {availableReports.map(report => (
+                      {filteredReports.map(report => (
                         <tr key={report.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 text-xs font-mono text-gray-500">
                             {report.id.replace('r-', '')}

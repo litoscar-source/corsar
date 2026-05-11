@@ -162,7 +162,7 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
     doc.setFontSize(8);
     doc.setTextColor(COLORS.SECONDARY[0], COLORS.SECONDARY[1], COLORS.SECONDARY[2]);
     doc.text("Horário:", ix, iy);
-    doc.text("Técnico:", ix + (colWidth/2), iy);
+    doc.text("Comercial/Técnico:", ix + (colWidth/2), iy);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
     doc.text(`${report.startTime} - ${report.endTime}`, ix, iy + 4);
@@ -170,6 +170,12 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
     iy += 9;
 
     iy += drawField("Tipo de Serviço", report.typeName, ix, iy, colWidth - 8);
+    
+    if (report.typeKey === 'visit_comercial' && (report.contactSpokenTo || report.contactPhone)) {
+      drawField("Contacto Efetuado com", `${report.contactSpokenTo || '-'} ${report.contactPhone ? `(${report.contactPhone})` : ''}`, ix, iy, colWidth - 8);
+      iy += 9;
+    }
+
     if (report.contractNumber || report.routeNumber) {
       drawField("Contrato / Rota", `${report.contractNumber || '-'} / ${report.routeNumber || '-'}`, ix, iy, colWidth - 8);
     }
@@ -242,7 +248,7 @@ export const generatePDF = (report: Report, client: Client, company: CompanySett
 
       const orderData = report.order.items.map(item => [
           item.productName,
-          String(item.quantity),
+          `${item.quantity} ${item.unit || 'Un'}`,
           `${Number(item.unitPrice).toFixed(2)}€`,
           `${item.discount}%`,
           `${Number(item.total).toFixed(2)}€`
@@ -535,6 +541,9 @@ export const generateOrderPDF = (report: Report, client: Client, company: Compan
       doc.setFontSize(10);
       doc.setTextColor(COLORS.TEXT[0], COLORS.TEXT[1], COLORS.TEXT[2]);
       doc.text(`Comercial: ${report.auditorName}`, margin, y);
+      if (report.contactSpokenTo) {
+         doc.text(`Falou com: ${report.contactSpokenTo}`, pageWidth / 2, y);
+      }
       
       y += 10;
       
@@ -562,7 +571,7 @@ export const generateOrderPDF = (report: Report, client: Client, company: Compan
       // Order Table
       const orderData = report.order.items.map(item => [
           item.productName,
-          String(item.quantity),
+          `${item.quantity} ${item.unit || 'Un'}`,
           `${Number(item.unitPrice).toFixed(2)}€`,
           `${item.discount}%`,
           `${Number(item.total).toFixed(2)}€`
